@@ -5,6 +5,8 @@ edition = "2024"
 
 [dependencies]
 rand = "*"
+serde = { version = "*", features = ["derive"] }
+serde_yaml = "*"
 
 [profile.dev]
 opt-level = 1

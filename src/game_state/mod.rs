@@ -3,22 +3,20 @@ use std::collections::HashSet;
 use rand::Rng;
 
 use crate::threat_index::ThreatIndex;
-
+mod bitboard;
+pub use bitboard::Bitboard;
 pub type Coord = (usize, usize);
 pub type MoveHistory = Vec<(Coord, HashSet<Coord>)>;
 pub type ForcingMoves = (Vec<Coord>, Vec<Coord>);
-
 pub struct ZobristHasher {
     pub(crate) board_size: usize,
     pub(crate) zobrist_table: Vec<Vec<[u64; 3]>>,
     pub side_to_move_hash: u64,
 }
-
 impl ZobristHasher {
     pub fn new(board_size: usize) -> Self {
         let mut rng = rand::rng();
         let mut zobrist_table = vec![vec![[0u64; 3]; board_size]; board_size];
-
         for row in zobrist_table.iter_mut() {
             for cell in row.iter_mut() {
                 for piece in cell.iter_mut() {
@@ -26,9 +24,7 @@ impl ZobristHasher {
                 }
             }
         }
-
         let side_to_move_hash = rng.random::<u64>() & ((1u64 << 63) - 1);
-
         Self {
             board_size,
             zobrist_table,
@@ -54,9 +50,9 @@ impl ZobristHasher {
         ]
     }
 }
-
 pub struct GomokuGameState {
     pub board: Vec<Vec<u8>>,
+    pub bitboard: Bitboard,
     pub board_size: usize,
     pub win_len: usize,
     pub hasher: ZobristHasher,
@@ -68,9 +64,7 @@ pub struct GomokuGameState {
     pub(crate) proximity_scale: f32,
     pub(crate) positional_bonus: Vec<Vec<f32>>,
 }
-
 mod logic;
-
 impl GomokuGameState {
     pub fn new(
         initial_board: Vec<Vec<u8>>,
@@ -79,7 +73,6 @@ impl GomokuGameState {
         win_len: usize,
     ) -> Self {
         let board_size = initial_board.len();
-
         let k_size = 7;
         let k_center = k_size / 2;
         let mut proximity_kernel = vec![vec![0.0f32; k_size]; k_size];
@@ -89,7 +82,6 @@ impl GomokuGameState {
                 *cell = 1.0 / (dist as f32 + 1.0);
             }
         }
-
         let center = board_size / 2;
         let mut positional_bonus = vec![vec![0.0f32; board_size]; board_size];
         for (r, row) in positional_bonus.iter_mut().enumerate() {
@@ -99,9 +91,9 @@ impl GomokuGameState {
                 *cell = bonus as f32 * 0.1;
             }
         }
-
         let mut state = Self {
-            board: initial_board,
+            board: initial_board.clone(),
+            bitboard: Bitboard::from_board(&initial_board),
             board_size,
             win_len,
             hasher,
@@ -113,52 +105,23 @@ impl GomokuGameState {
             proximity_scale: 60.0,
             positional_bonus,
         };
-
         state.rebuild_hashes(current_player);
         state.threat_index.initialize_from_board(&state.board);
         state.rebuild_candidate_moves();
-
         state
     }
 
     pub(crate) fn rebuild_candidate_moves(&mut self) {
         self.candidate_moves.clear();
-        let has_stones = self
-            .board
-            .iter()
-            .any(|row| row.iter().any(|&cell| cell != 0));
-
-        if !has_stones {
+        let occupied = self.bitboard.occupied();
+        if Bitboard::is_all_zeros(&occupied) {
             let center = self.board_size / 2;
             self.candidate_moves.insert((center, center));
             return;
         }
-
-        for r in 0..self.board_size {
-            for c in 0..self.board_size {
-                if self.board[r][c] != 0 {
-                    for dr in -1i32..=1 {
-                        for dc in -1i32..=1 {
-                            if dr == 0 && dc == 0 {
-                                continue;
-                            }
-                            let nr = r as i32 + dr;
-                            let nc = c as i32 + dc;
-                            if nr >= 0
-                                && nr < self.board_size as i32
-                                && nc >= 0
-                                && nc < self.board_size as i32
-                            {
-                                let nr = nr as usize;
-                                let nc = nc as usize;
-                                if self.board[nr][nc] == 0 {
-                                    self.candidate_moves.insert((nr, nc));
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+        let neighbors = self.bitboard.neighbors(&occupied);
+        for coord in self.bitboard.iter_bits(&neighbors) {
+            self.candidate_moves.insert(coord);
         }
     }
 
