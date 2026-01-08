@@ -1,54 +1,9 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
-use crate::game_state::{GomokuGameState, ZobristHasher};
-
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
-pub struct TTEntry {
-    pub pn: u64,
-    pub dn: u64,
-    pub win_len: u64,
-}
-
-pub struct PNSNode {
-    pub player: u8,
-    pub parent: Option<usize>,
-    pub mov: Option<(usize, usize)>,
-    pub children: Vec<usize>,
-    pub pn: u64,
-    pub dn: u64,
-    pub is_expanded: bool,
-    pub win_len: u64,
-    pub depth: usize,
-    pub is_depth_limited: bool,
-    pub hash: u64,
-}
-
-impl PNSNode {
-    pub fn new(
-        player: u8,
-        parent: Option<usize>,
-        mov: Option<(usize, usize)>,
-        depth: usize,
-    ) -> Self {
-        Self {
-            player,
-            parent,
-            mov,
-            children: Vec::new(),
-            pn: 1,
-            dn: 1,
-            is_expanded: false,
-            win_len: u64::MAX,
-            depth,
-            is_depth_limited: false,
-            hash: 0,
-        }
-    }
-
-    pub fn is_or_node(&self) -> bool {
-        self.player == 1
-    }
-}
+use crate::{
+    game_state::{GomokuGameState, ZobristHasher},
+    pns::{PNSNode, TTEntry},
+};
 
 pub struct PNSSolver {
     pub game_state: GomokuGameState,
@@ -68,7 +23,7 @@ impl PNSSolver {
         win_len: usize,
         depth_limit: Option<usize>,
     ) -> Self {
-        let hasher = ZobristHasher::new(board_size);
+        let hasher = Arc::new(ZobristHasher::new(board_size));
         let game_state = GomokuGameState::new(initial_board, hasher, 1, win_len);
 
         let mut solver = Self {

@@ -1,7 +1,6 @@
 use std::time::Instant;
 
-use super::solver::{PNSSolver, TTEntry};
-
+use crate::pns::{PNSSolver, TTEntry};
 impl PNSSolver {
     pub fn dfpn_search(&mut self, node_idx: usize, pn_threshold: u64, dn_threshold: u64) {
         self.iterations += 1;
@@ -10,7 +9,6 @@ impl PNSSolver {
         if node.pn == 0 || node.dn == 0 {
             return;
         }
-
         let tt_key = (node.hash, node.player);
         if let Some(entry) = self.transposition_table.get(&tt_key) {
             self.nodes[node_idx].pn = entry.pn;
@@ -18,7 +16,6 @@ impl PNSSolver {
             self.nodes[node_idx].win_len = entry.win_len;
             return;
         }
-
         if !self.nodes[node_idx].is_expanded {
             self.expand_node(node_idx);
             self.update_node_pdn(node_idx);
@@ -26,16 +23,13 @@ impl PNSSolver {
                 return;
             }
         }
-
         loop {
             if self.nodes[node_idx].children.is_empty() {
                 break;
             }
-
             let children = self.nodes[node_idx].children.clone();
             let is_or_node = self.nodes[node_idx].is_or_node();
             let player = self.nodes[node_idx].player;
-
             let best_child_idx = if is_or_node {
                 *children
                     .iter()
@@ -47,10 +41,8 @@ impl PNSSolver {
                     .min_by_key(|&&idx| (self.nodes[idx].dn, self.nodes[idx].win_len))
                     .unwrap()
             };
-
             let best_move = self.nodes[best_child_idx].mov.unwrap();
             self.game_state.make_move(best_move, player);
-
             let (new_pn_thresh, new_dn_thresh) = if is_or_node {
                 (
                     pn_threshold.min(self.nodes[best_child_idx].pn.saturating_add(1)),
@@ -62,24 +54,18 @@ impl PNSSolver {
                     dn_threshold.min(self.nodes[best_child_idx].dn.saturating_add(1)),
                 )
             };
-
             self.dfpn_search(best_child_idx, new_pn_thresh, new_dn_thresh);
-
             self.game_state.undo_move(best_move);
-
             let old_pn = self.nodes[node_idx].pn;
             let old_dn = self.nodes[node_idx].dn;
             self.update_node_pdn(node_idx);
-
             if self.nodes[node_idx].pn == old_pn && self.nodes[node_idx].dn == old_dn {
                 break;
             }
-
             if self.nodes[node_idx].pn >= pn_threshold || self.nodes[node_idx].dn >= dn_threshold {
                 break;
             }
         }
-
         let node = &self.nodes[node_idx];
         if (node.pn == 0 || node.dn == 0) && !node.is_depth_limited {
             let tt_key = (node.hash, node.player);
@@ -95,10 +81,8 @@ impl PNSSolver {
         let start_time = Instant::now();
         self.iterations = 0;
         self.nodes_processed = 0;
-
         while self.nodes[self.root].pn != 0 && self.nodes[self.root].dn != 0 {
             self.dfpn_search(self.root, u64::MAX, u64::MAX);
-
             if verbose && self.iterations.is_multiple_of(100000) {
                 let elapsed = start_time.elapsed().as_secs_f64();
                 let ips = if elapsed > 0.0 {
@@ -117,7 +101,6 @@ impl PNSSolver {
                 );
             }
         }
-
         let end_time = Instant::now();
         if verbose {
             let elapsed = (end_time - start_time).as_secs_f64();
@@ -126,11 +109,9 @@ impl PNSSolver {
                 elapsed, self.iterations, self.nodes_processed
             );
         }
-
         if self.nodes[self.root].pn == 0 {
             let root_win_len = self.nodes[self.root].win_len;
             let children = self.nodes[self.root].children.clone();
-
             let winning_children: Vec<usize> = children
                 .iter()
                 .filter(|&&idx| {
@@ -139,7 +120,6 @@ impl PNSSolver {
                 })
                 .copied()
                 .collect();
-
             if !winning_children.is_empty() {
                 let best_child_idx = *winning_children
                     .iter()
@@ -153,10 +133,8 @@ impl PNSSolver {
                     .unwrap();
                 self.best_move = self.nodes[best_child_idx].mov;
             }
-
             return true;
         }
-
         false
     }
 

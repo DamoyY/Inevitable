@@ -1,7 +1,12 @@
-use std::collections::{HashSet, VecDeque};
+use std::{
+    collections::{HashSet, VecDeque},
+    sync::Arc,
+};
 
-use super::solver::{PNSNode, PNSSolver};
-use crate::game_state::{GomokuGameState, ZobristHasher};
+use crate::{
+    game_state::{GomokuGameState, ZobristHasher},
+    pns::{PNSNode, PNSSolver},
+};
 
 impl PNSSolver {
     pub fn increase_depth_limit(&mut self, new_depth_limit: usize) {
@@ -53,7 +58,7 @@ impl PNSSolver {
             }
             path.reverse();
 
-            let hasher = ZobristHasher::new(board_size);
+            let hasher = Arc::new(ZobristHasher::new(board_size));
             let mut temp_game_state = GomokuGameState::new(temp_board.clone(), hasher, 1, win_len);
 
             for &(mov, player) in &path {

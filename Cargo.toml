@@ -4,7 +4,10 @@ version = "0.0.0"
 edition = "2024"
 
 [dependencies]
+crossbeam = "*"
+dashmap = "*"
 rand = "*"
+parking_lot = "*"
 serde = { version = "*", features = ["derive"] }
 serde_yaml = "*"
 
