@@ -1,4 +1,5 @@
 use super::{node::NodeRef, shared_tree::SharedTree};
+use std::sync::Arc;
 impl SharedTree {
     pub fn select_best_child(&self, node: &NodeRef) -> Option<NodeRef> {
         let children_guard = node.children.read();
@@ -10,12 +11,12 @@ impl SharedTree {
         let best = if is_or_node {
             children
                 .iter()
-                .min_by_key(|c| (c.get_effective_pn(), c.get_win_len()))
+                .min_by_key(|c| (c.node.get_effective_pn(), c.node.get_win_len()))
         } else {
             children
                 .iter()
-                .min_by_key(|c| (c.get_effective_dn(), c.get_win_len()))
+                .min_by_key(|c| (c.node.get_effective_dn(), c.node.get_win_len()))
         };
-        best.cloned()
+        best.map(|c| Arc::clone(&c.node))
     }
 }

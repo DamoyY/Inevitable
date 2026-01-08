@@ -83,17 +83,17 @@ impl Worker {
                 let best = if is_or_node {
                     children
                         .iter()
-                        .min_by_key(|c| (c.get_effective_pn(), c.get_win_len()))
+                        .min_by_key(|c| (c.node.get_effective_pn(), c.node.get_win_len()))
                 } else {
                     children
                         .iter()
-                        .min_by_key(|c| (c.get_effective_dn(), c.get_win_len()))
+                        .min_by_key(|c| (c.node.get_effective_dn(), c.node.get_win_len()))
                 };
 
-                best.cloned()
+                best.map(|c| (Arc::clone(&c.node), c.mov))
             };
 
-            let best_child = match best_child {
+            let (best_child, mov) = match best_child {
                 Some(c) => c,
                 None => return Some(current),
             };
@@ -102,7 +102,6 @@ impl Worker {
                 return Some(best_child);
             }
 
-            let mov = best_child.mov.expect("Child node must have a move");
             let player = current.player;
 
             best_child.add_virtual_pressure(VIRTUAL_PRESSURE, VIRTUAL_PRESSURE);

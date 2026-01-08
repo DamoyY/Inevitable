@@ -178,7 +178,6 @@ impl PNSSolver {
                 mov, self.nodes[self.root].depth
             );
         } else {
-            println!("警告: 在搜索树中未找到着法 {:?}。", mov);
             let new_player = 3 - current_player;
             let mut new_root_node = PNSNode::new(new_player, None, None, 0);
             new_root_node.hash = self.game_state.get_canonical_hash();

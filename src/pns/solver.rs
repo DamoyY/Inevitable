@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, sync::Arc, time::Instant};
 
 use crate::{
     game_state::{GomokuGameState, ZobristHasher},
@@ -12,6 +12,16 @@ pub struct PNSSolver {
     pub root: usize,
     pub(crate) iterations: u64,
     pub(crate) nodes_processed: u64,
+    pub(crate) tt_lookups: u64,
+    pub(crate) tt_hits: u64,
+    pub(crate) tt_stores: u64,
+    pub(crate) eval_calls: u64,
+    pub(crate) eval_time_ns: u64,
+    pub(crate) expand_time_ns: u64,
+    pub(crate) movegen_time_ns: u64,
+    pub(crate) children_generated: u64,
+    pub(crate) depth_cutoffs: u64,
+    pub(crate) early_cutoffs: u64,
     pub(crate) best_move: Option<(usize, usize)>,
     pub(crate) depth_limit: Option<usize>,
 }
@@ -33,6 +43,16 @@ impl PNSSolver {
             root: 0,
             iterations: 0,
             nodes_processed: 0,
+            tt_lookups: 0,
+            tt_hits: 0,
+            tt_stores: 0,
+            eval_calls: 0,
+            eval_time_ns: 0,
+            expand_time_ns: 0,
+            movegen_time_ns: 0,
+            children_generated: 0,
+            depth_cutoffs: 0,
+            early_cutoffs: 0,
             best_move: None,
             depth_limit,
         };
@@ -47,14 +67,21 @@ impl PNSSolver {
     }
 
     pub(crate) fn evaluate_and_set_proof_numbers(&mut self, node_idx: usize) {
+        let start = Instant::now();
+        self.eval_calls = self.eval_calls.saturating_add(1);
         let node = &self.nodes[node_idx];
         let tt_key = (node.hash, node.player);
 
+        self.tt_lookups = self.tt_lookups.saturating_add(1);
         if let Some(entry) = self.transposition_table.get(&tt_key) {
+            self.tt_hits = self.tt_hits.saturating_add(1);
             self.nodes[node_idx].pn = entry.pn;
             self.nodes[node_idx].dn = entry.dn;
             self.nodes[node_idx].win_len = entry.win_len;
             self.nodes[node_idx].is_expanded = true;
+            self.eval_time_ns = self
+                .eval_time_ns
+                .saturating_add(duration_to_ns(start.elapsed()));
             return;
         }
 
@@ -92,11 +119,16 @@ impl PNSSolver {
         } else if let Some(limit) = self.depth_limit
             && self.nodes[node_idx].depth >= limit
         {
+            self.depth_cutoffs = self.depth_cutoffs.saturating_add(1);
             self.nodes[node_idx].pn = u64::MAX;
             self.nodes[node_idx].dn = 0;
             self.nodes[node_idx].is_expanded = true;
             self.nodes[node_idx].is_depth_limited = true;
         }
+
+        self.eval_time_ns = self
+            .eval_time_ns
+            .saturating_add(duration_to_ns(start.elapsed()));
     }
 
     pub(crate) fn expand_node(&mut self, node_idx: usize) {
@@ -105,17 +137,22 @@ impl PNSSolver {
             return;
         }
 
+        let expand_start = Instant::now();
         self.nodes_processed += 1;
 
         if let Some(limit) = self.depth_limit
             && self.nodes[node_idx].depth >= limit
         {
+            self.depth_cutoffs = self.depth_cutoffs.saturating_add(1);
             self.nodes[node_idx].is_expanded = true;
             self.nodes[node_idx].is_depth_limited = true;
             self.nodes[node_idx].pn = 1;
             self.nodes[node_idx].dn = 1;
             self.nodes[node_idx].win_len = u64::MAX;
             self.nodes[node_idx].children.clear();
+            self.expand_time_ns = self
+                .expand_time_ns
+                .saturating_add(duration_to_ns(expand_start.elapsed()));
             return;
         }
 
@@ -124,9 +161,15 @@ impl PNSSolver {
         let depth = self.nodes[node_idx].depth;
         let is_or_node = self.nodes[node_idx].is_or_node();
 
+        let movegen_start = Instant::now();
         let legal_moves = self.game_state.get_legal_moves(player);
+        let legal_moves_len = legal_moves.len();
+        self.movegen_time_ns = self
+            .movegen_time_ns
+            .saturating_add(duration_to_ns(movegen_start.elapsed()));
         let mut child_indices = Vec::new();
 
+        let mut generated = 0usize;
         for mov in legal_moves {
             self.game_state.make_move(mov, player);
 
@@ -140,6 +183,8 @@ impl PNSSolver {
             self.game_state.undo_move(mov);
 
             child_indices.push(child_idx);
+            generated += 1;
+            self.children_generated = self.children_generated.saturating_add(1);
 
             let child = &self.nodes[child_idx];
             if is_or_node && child.pn == 0 {
@@ -151,6 +196,12 @@ impl PNSSolver {
         }
 
         self.nodes[node_idx].children = child_indices;
+        if generated < legal_moves_len {
+            self.early_cutoffs = self.early_cutoffs.saturating_add(1);
+        }
+        self.expand_time_ns = self
+            .expand_time_ns
+            .saturating_add(duration_to_ns(expand_start.elapsed()));
     }
 
     pub(crate) fn update_node_pdn(&mut self, node_idx: usize) {
@@ -252,5 +303,14 @@ impl PNSSolver {
 
     pub fn root_player(&self) -> u8 {
         self.nodes[self.root].player
+    }
+}
+
+fn duration_to_ns(duration: std::time::Duration) -> u64 {
+    let nanos = duration.as_nanos();
+    if nanos > u128::from(u64::MAX) {
+        u64::MAX
+    } else {
+        nanos as u64
     }
 }

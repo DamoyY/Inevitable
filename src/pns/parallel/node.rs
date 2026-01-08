@@ -1,12 +1,16 @@
 use parking_lot::RwLock;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 
 pub type NodeRef = Arc<ParallelNode>;
 
+pub struct ChildRef {
+    pub node: NodeRef,
+    pub mov: (usize, usize),
+}
+
 pub struct ParallelNode {
     pub player: u8,
-    pub mov: Option<(usize, usize)>,
     pub depth: usize,
     pub hash: u64,
 
@@ -16,21 +20,20 @@ pub struct ParallelNode {
     pub virtual_dn: AtomicU64,
     pub win_len: AtomicU64,
 
-    pub children: RwLock<Option<Vec<NodeRef>>>,
-    pub is_depth_limited: bool,
+    pub children: RwLock<Option<Vec<ChildRef>>>,
+    pub is_depth_limited: AtomicBool,
+    pub depth_cutoff: AtomicBool,
 }
 
 impl ParallelNode {
     pub fn new(
         player: u8,
-        mov: Option<(usize, usize)>,
         depth: usize,
         hash: u64,
         is_depth_limited: bool,
     ) -> Self {
         Self {
             player,
-            mov,
             depth,
             hash,
             pn: AtomicU64::new(1),
@@ -39,7 +42,8 @@ impl ParallelNode {
             virtual_dn: AtomicU64::new(0),
             win_len: AtomicU64::new(u64::MAX),
             children: RwLock::new(None),
-            is_depth_limited,
+            is_depth_limited: AtomicBool::new(is_depth_limited),
+            depth_cutoff: AtomicBool::new(false),
         }
     }
 
@@ -93,6 +97,26 @@ impl ParallelNode {
     #[inline]
     pub fn get_win_len(&self) -> u64 {
         self.win_len.load(Ordering::Acquire)
+    }
+
+    #[inline]
+    pub fn is_depth_limited(&self) -> bool {
+        self.is_depth_limited.load(Ordering::Acquire)
+    }
+
+    #[inline]
+    pub fn set_is_depth_limited(&self, value: bool) {
+        self.is_depth_limited.store(value, Ordering::Release);
+    }
+
+    #[inline]
+    pub fn is_depth_cutoff(&self) -> bool {
+        self.depth_cutoff.load(Ordering::Acquire)
+    }
+
+    #[inline]
+    pub fn set_depth_cutoff(&self, value: bool) {
+        self.depth_cutoff.store(value, Ordering::Release);
     }
 
     #[inline]

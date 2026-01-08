@@ -97,6 +97,10 @@ impl GomokuGameState {
         *self.hashes.iter().min().unwrap()
     }
 
+    pub fn get_hash(&self) -> u64 {
+        self.hashes[0]
+    }
+
     pub fn check_win(&self, player: u8) -> bool {
         !self
             .threat_index

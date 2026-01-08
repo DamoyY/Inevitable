@@ -28,16 +28,13 @@ pub fn play_game() {
     let board_size = config.board_size;
     let win_len = config.win_len;
     let num_threads = config.num_threads;
+    let log_interval_ms = config.log_interval_ms;
 
     println!(
         "棋盘大小: {}x{}, 获胜条件: {}子连珠",
         board_size, board_size, win_len
     );
-    if let Some(n) = num_threads {
-        println!("使用 {} 个线程进行并行搜索", n);
-    } else {
-        println!("使用所有可用 CPU 核心进行并行搜索");
-    }
+    println!("使用 {} 个线程进行并行搜索", num_threads);
     println!("程序执黑 (X)先手，您执白 (O)后手。");
 
     let mut board = vec![vec![0u8; board_size]; board_size];
@@ -62,6 +59,7 @@ pub fn play_game() {
                     board_size,
                     win_len,
                     num_threads,
+                    log_interval_ms,
                     config.verbose,
                 )
                 .unwrap()
@@ -69,7 +67,14 @@ pub fn play_game() {
             println!("程序选择落子于: {:?}", mov);
             board[mov.0][mov.1] = 1;
 
-            let solver = ParallelSolver::new(board.clone(), board_size, win_len, Some(1), None);
+            let solver = ParallelSolver::new(
+                board.clone(),
+                board_size,
+                win_len,
+                Some(1),
+                num_threads,
+                log_interval_ms,
+            );
             if solver.game_state().check_win(1) {
                 println!("\n最终棋盘:");
                 print_board(&board);
@@ -107,8 +112,14 @@ pub fn play_game() {
                         }
                         board[r][c] = 2;
 
-                        let solver =
-                            ParallelSolver::new(board.clone(), board_size, win_len, Some(1), None);
+                        let solver = ParallelSolver::new(
+                            board.clone(),
+                            board_size,
+                            win_len,
+                            Some(1),
+                            num_threads,
+                            log_interval_ms,
+                        );
                         if solver.game_state().check_win(2) {
                             println!("\n最终棋盘:");
                             print_board(&board);

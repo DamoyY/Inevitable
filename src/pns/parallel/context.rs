@@ -65,6 +65,10 @@ impl ThreadLocalContext {
         self.game_state.get_canonical_hash()
     }
 
+    pub fn get_hash(&self) -> u64 {
+        self.game_state.get_hash()
+    }
+
     pub fn get_legal_moves(&self, player: u8) -> Vec<(usize, usize)> {
         self.game_state.get_legal_moves(player)
     }
