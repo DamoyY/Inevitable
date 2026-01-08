@@ -16,18 +16,18 @@ pub struct ZobristHasher {
 
 impl ZobristHasher {
     pub fn new(board_size: usize) -> Self {
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         let mut zobrist_table = vec![vec![[0u64; 3]; board_size]; board_size];
 
         for row in zobrist_table.iter_mut() {
             for cell in row.iter_mut() {
                 for piece in cell.iter_mut() {
-                    *piece = rng.r#gen::<u64>() & ((1u64 << 63) - 1);
+                    *piece = rng.random::<u64>() & ((1u64 << 63) - 1);
                 }
             }
         }
 
-        let side_to_move_hash = rng.r#gen::<u64>() & ((1u64 << 63) - 1);
+        let side_to_move_hash = rng.random::<u64>() & ((1u64 << 63) - 1);
 
         Self {
             board_size,

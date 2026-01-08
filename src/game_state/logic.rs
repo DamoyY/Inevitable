@@ -186,6 +186,19 @@ impl GomokuGameState {
     }
 
     pub fn get_legal_moves(&self, player: u8) -> Vec<Coord> {
+        let (win_moves, threat_moves) = self.find_forcing_moves(player);
+
+        if !win_moves.is_empty() {
+            return win_moves;
+        }
+
+        if !threat_moves.is_empty() {
+            let scores = self.score_moves(player, &threat_moves);
+            let mut scored_moves: Vec<(Coord, f32)> = scores;
+            scored_moves.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+            return scored_moves.into_iter().map(|(coord, _)| coord).collect();
+        }
+
         let mut empties = Vec::new();
         for r in 0..self.board_size {
             for c in 0..self.board_size {
@@ -200,37 +213,8 @@ impl GomokuGameState {
         }
 
         let scores = self.score_moves(player, &empties);
-        let score_map: std::collections::HashMap<Coord, f32> = scores.into_iter().collect();
-
-        let (win_moves, threat_moves) = self.find_forcing_moves(player);
-        let win_set: HashSet<Coord> = win_moves.into_iter().collect();
-        let threat_set: HashSet<Coord> = threat_moves.into_iter().collect();
-
-        empties.sort_by(|a, b| {
-            let pri_a = if win_set.contains(a) {
-                0
-            } else if threat_set.contains(a) {
-                1
-            } else {
-                2
-            };
-            let pri_b = if win_set.contains(b) {
-                0
-            } else if threat_set.contains(b) {
-                1
-            } else {
-                2
-            };
-
-            if pri_a != pri_b {
-                return pri_a.cmp(&pri_b);
-            }
-
-            let score_a = score_map.get(a).unwrap_or(&0.0);
-            let score_b = score_map.get(b).unwrap_or(&0.0);
-            score_b.partial_cmp(score_a).unwrap()
-        });
-
-        empties
+        let mut scored_moves: Vec<(Coord, f32)> = scores;
+        scored_moves.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+        scored_moves.into_iter().map(|(coord, _)| coord).collect()
     }
 }
