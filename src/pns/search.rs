@@ -1,7 +1,6 @@
-use std::collections::hash_map::Entry;
 use std::time::Instant;
 
-use crate::pns::{PNSSolver, TTEntry};
+use crate::pns::PNSSolver;
 impl PNSSolver {
     pub fn dfpn_search(&mut self, node_idx: usize, pn_threshold: u64, dn_threshold: u64) {
         self.iterations += 1;
@@ -17,7 +16,9 @@ impl PNSSolver {
             self.nodes[node_idx].pn = entry.pn;
             self.nodes[node_idx].dn = entry.dn;
             self.nodes[node_idx].win_len = entry.win_len;
-            return;
+            if entry.pn == 0 || entry.dn == 0 {
+                return;
+            }
         }
         if !self.nodes[node_idx].is_expanded {
             self.expand_node(node_idx);
@@ -67,21 +68,6 @@ impl PNSSolver {
             }
             if self.nodes[node_idx].pn >= pn_threshold || self.nodes[node_idx].dn >= dn_threshold {
                 break;
-            }
-        }
-        let node = &self.nodes[node_idx];
-        if (node.pn == 0 || node.dn == 0) && !node.is_depth_limited {
-            let tt_key = (node.hash, node.player);
-            match self.transposition_table.entry(tt_key) {
-                Entry::Vacant(entry) => {
-                    entry.insert(TTEntry {
-                        pn: node.pn,
-                        dn: node.dn,
-                        win_len: node.win_len,
-                    });
-                    self.tt_stores = self.tt_stores.saturating_add(1);
-                }
-                Entry::Occupied(_) => {}
             }
         }
     }
@@ -262,3 +248,4 @@ impl PNSSolver {
         }
     }
 }
+

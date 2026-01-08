@@ -16,7 +16,6 @@ impl PNSSolver {
             return;
         }
 
-        self.transposition_table.clear();
         self.depth_limit = Some(new_depth_limit);
 
         let mut visited = HashSet::new();
@@ -89,12 +88,7 @@ impl PNSSolver {
                 }
             }
 
-            if let Some(entry) = self.transposition_table.get(&tt_key) {
-                self.nodes[*node_idx].pn = entry.pn;
-                self.nodes[*node_idx].dn = entry.dn;
-                self.nodes[*node_idx].win_len = entry.win_len;
-                self.nodes[*node_idx].is_expanded = true;
-            } else if p1_wins {
+            if p1_wins {
                 self.nodes[*node_idx].pn = 0;
                 self.nodes[*node_idx].dn = u64::MAX;
                 self.nodes[*node_idx].win_len = 0;
@@ -110,6 +104,13 @@ impl PNSSolver {
                 self.nodes[*node_idx].dn = 0;
                 self.nodes[*node_idx].is_expanded = true;
                 self.nodes[*node_idx].is_depth_limited = true;
+            } else if let Some(entry) = self.transposition_table.get(&tt_key) {
+                self.nodes[*node_idx].pn = entry.pn;
+                self.nodes[*node_idx].dn = entry.dn;
+                self.nodes[*node_idx].win_len = entry.win_len;
+                if entry.pn == 0 || entry.dn == 0 {
+                    self.nodes[*node_idx].is_expanded = true;
+                }
             }
         }
 
