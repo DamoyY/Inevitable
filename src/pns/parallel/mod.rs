@@ -6,5 +6,6 @@ mod shared_tree;
 mod worker;
 
 pub use manager::ParallelSolver;
+pub use manager::SearchParams;
 pub use node::{NodeRef, ParallelNode};
 pub use shared_tree::{SharedTree, TranspositionTable};

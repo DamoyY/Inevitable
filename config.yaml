@@ -3,4 +3,4 @@ win_len: 5
 initial_depth_limit: 0
 verbose: true
 num_threads: 6
-log_interval_ms: 3000
+log_interval_ms: 4000

@@ -24,9 +24,6 @@ impl Config {
                 .map(std::num::NonZero::get)
                 .unwrap_or(4);
         }
-        if config.log_interval_ms == 0 {
-            config.log_interval_ms = 1000;
-        }
         config
     }
 }

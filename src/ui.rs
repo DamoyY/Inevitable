@@ -1,6 +1,7 @@
 use std::{
     io::{self, Write},
     sync::{
+        Arc,
         atomic::{AtomicBool, Ordering},
         mpsc,
     },
@@ -10,7 +11,7 @@ use std::{
 
 use crate::{
     config::Config,
-    pns::{ParallelSolver, TranspositionTable},
+    pns::{ParallelSolver, SearchParams, TranspositionTable},
 };
 
 pub fn print_board(board: &[Vec<u8>]) {
@@ -33,7 +34,7 @@ pub fn print_board(board: &[Vec<u8>]) {
         println!();
     }
 }
-pub fn play_game(exit_flag: &AtomicBool) {
+pub fn play_game(exit_flag: &Arc<AtomicBool>) {
     let config = Config::load();
     print_intro(&config);
     let board_size = config.board_size;
@@ -50,7 +51,7 @@ pub fn play_game(exit_flag: &AtomicBool) {
             print_board(&board);
         }
         if current_player == 1 {
-            if ai_turn(&mut board, &config, !has_stones, &mut tt) {
+            if ai_turn(&mut board, &config, !has_stones, &mut tt, exit_flag) {
                 break;
             }
             if exit_flag.load(Ordering::SeqCst) {
@@ -58,7 +59,7 @@ pub fn play_game(exit_flag: &AtomicBool) {
             }
             current_player = 2;
         } else {
-            if player_turn(&mut board, board_size, exit_flag) {
+            if player_turn(&mut board, board_size, exit_flag.as_ref()) {
                 return;
             }
             current_player = 1;
@@ -84,7 +85,11 @@ fn ai_turn(
     config: &Config,
     board_empty: bool,
     tt: &mut Option<TranspositionTable>,
+    exit_flag: &Arc<AtomicBool>,
 ) -> bool {
+    if exit_flag.load(Ordering::SeqCst) {
+        return true;
+    }
     let board_size = config.board_size;
     let win_len = config.win_len;
     let num_threads = config.num_threads;
@@ -95,18 +100,25 @@ fn ai_turn(
         (board_size / 2, board_size / 2)
     } else {
         println!("程序正在思考...");
-        let (best_move, new_tt) = ParallelSolver::find_best_move_with_tt(
+        let params = SearchParams::new(board_size, win_len, num_threads, log_interval_ms);
+        let (best_move, new_tt) = ParallelSolver::find_best_move_with_tt_and_stop(
             board.to_vec(),
-            board_size,
-            win_len,
-            num_threads,
-            log_interval_ms,
+            params,
             verbose,
+            exit_flag,
             tt.take(),
         );
         *tt = Some(new_tt);
-        best_move.unwrap()
+        if let Some(mov) = best_move {
+            mov
+        } else {
+            println!("搜索已中断。");
+            return true;
+        }
     };
+    if exit_flag.load(Ordering::SeqCst) {
+        return true;
+    }
     println!("程序选择落子于: {mov:?}");
     board[mov.0][mov.1] = 1;
     if check_win(board, board_size, win_len, num_threads, log_interval_ms, 1) {

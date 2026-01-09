@@ -102,7 +102,7 @@ impl GomokuGameState {
         ];
         for &(p_req, o_req, score) in &patterns_to_score {
             let windows = self.threat_index.get_pattern_windows(player, p_req, o_req);
-            for &window_idx in windows {
+            for window_idx in windows {
                 let window = &self.threat_index.all_windows[window_idx];
                 for &(r, c) in &window.empty_cells {
                     total_scores[r][c] += score;

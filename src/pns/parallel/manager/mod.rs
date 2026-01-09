@@ -1,4 +1,7 @@
-use std::sync::Arc;
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+};
 
 use super::{
     context::ThreadLocalContext,
@@ -8,6 +11,7 @@ use crate::game_state::{GomokuGameState, ZobristHasher};
 mod logging;
 mod metrics;
 mod solve;
+use metrics::{format_sci_u64, format_sci_usize};
 pub struct ParallelSolver {
     pub tree: Arc<SharedTree>,
     pub base_game_state: GomokuGameState,
@@ -15,6 +19,31 @@ pub struct ParallelSolver {
     pub log_interval_ms: u64,
     board_size: usize,
     win_len: usize,
+}
+
+#[derive(Clone, Copy)]
+pub struct SearchParams {
+    pub board_size: usize,
+    pub win_len: usize,
+    pub num_threads: usize,
+    pub log_interval_ms: u64,
+}
+
+impl SearchParams {
+    #[must_use]
+    pub const fn new(
+        board_size: usize,
+        win_len: usize,
+        num_threads: usize,
+        log_interval_ms: u64,
+    ) -> Self {
+        Self {
+            board_size,
+            win_len,
+            num_threads,
+            log_interval_ms,
+        }
+    }
 }
 
 impl ParallelSolver {
@@ -48,16 +77,35 @@ impl ParallelSolver {
         log_interval_ms: u64,
         existing_tt: Option<TranspositionTable>,
     ) -> Self {
-        let hasher = Arc::new(ZobristHasher::new(board_size));
-        let game_state = GomokuGameState::new(initial_board, hasher, 1, win_len);
+        Self::with_tt_and_stop(
+            initial_board,
+            SearchParams::new(board_size, win_len, num_threads, log_interval_ms),
+            depth_limit,
+            &Arc::new(AtomicBool::new(false)),
+            existing_tt,
+        )
+    }
+
+    #[must_use]
+    pub fn with_tt_and_stop(
+        initial_board: Vec<Vec<u8>>,
+        params: SearchParams,
+        depth_limit: Option<usize>,
+        stop_flag: &Arc<AtomicBool>,
+        existing_tt: Option<TranspositionTable>,
+    ) -> Self {
+        let hasher = Arc::new(ZobristHasher::new(params.board_size));
+        let game_state =
+            GomokuGameState::new(initial_board, hasher, 1, params.win_len);
         let root_hash = game_state.get_canonical_hash();
         let root_pos_hash = game_state.get_hash();
 
-        let tree = Arc::new(SharedTree::with_tt(
+        let tree = Arc::new(SharedTree::with_tt_and_stop(
             1,
             root_hash,
             root_pos_hash,
             depth_limit,
+            Arc::clone(stop_flag),
             existing_tt,
         ));
 
@@ -66,10 +114,10 @@ impl ParallelSolver {
         Self {
             tree,
             base_game_state: game_state,
-            num_threads,
-            log_interval_ms,
-            board_size,
-            win_len,
+            num_threads: params.num_threads,
+            log_interval_ms: params.log_interval_ms,
+            board_size: params.board_size,
+            win_len: params.win_len,
         }
     }
 
@@ -116,33 +164,66 @@ impl ParallelSolver {
         verbose: bool,
         existing_tt: Option<TranspositionTable>,
     ) -> (Option<(usize, usize)>, TranspositionTable) {
-        let mut depth = 1usize;
-        let mut solver = Self::with_tt(
+        Self::find_best_move_with_tt_and_stop(
             initial_board,
-            board_size,
-            win_len,
+            SearchParams::new(board_size, win_len, num_threads, log_interval_ms),
+            verbose,
+            &Arc::new(AtomicBool::new(false)),
+            existing_tt,
+        )
+    }
+
+    #[must_use]
+    pub fn find_best_move_with_tt_and_stop(
+        initial_board: Vec<Vec<u8>>,
+        params: SearchParams,
+        verbose: bool,
+        stop_flag: &Arc<AtomicBool>,
+        existing_tt: Option<TranspositionTable>,
+    ) -> (Option<(usize, usize)>, TranspositionTable) {
+        let mut depth = 1usize;
+        let mut solver = Self::with_tt_and_stop(
+            initial_board,
+            params,
             Some(depth),
-            num_threads,
-            log_interval_ms,
+            stop_flag,
             existing_tt,
         );
         loop {
+            if stop_flag.load(Ordering::Acquire) {
+                return (None, solver.get_tt());
+            }
             if verbose {
-                println!("尝试搜索深度 D={depth}");
+                println!("尝试搜索深度 D={depth}", depth = format_sci_usize(depth));
             }
             let found = solver.solve(verbose);
+            if stop_flag.load(Ordering::Acquire) || solver.tree.stop_requested() {
+                return (None, solver.get_tt());
+            }
             if found {
                 let best_move = solver.get_best_move();
                 if verbose {
+                    let path_len = format_sci_u64(solver.root_win_len());
+                    let best_move_display = best_move.map_or_else(
+                        || "None".to_string(),
+                        |(x, y)| {
+                            format!(
+                                "({}, {})",
+                                format_sci_usize(x),
+                                format_sci_usize(y)
+                            )
+                        },
+                    );
                     println!(
-                        "在 {} 步内找到路径，最佳首步: {:?}",
-                        solver.root_win_len(),
-                        best_move
+                        "在 {path_len} 步内找到路径，最佳首步: {best_move_display}"
                     );
                 }
                 return (best_move, solver.get_tt());
             }
             depth += 1;
+            if stop_flag.load(Ordering::Acquire) {
+                return (None, solver.get_tt());
+            }
             solver.increase_depth_limit(depth);
         }
     }

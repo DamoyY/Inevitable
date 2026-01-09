@@ -40,7 +40,7 @@ impl SharedTree {
         for mov in legal_moves {
             let apply_start = Instant::now();
             ctx.make_move(mov, player);
-            self.total_move_apply_time_ns
+            self.total_move_make_time_ns
                 .fetch_add(duration_to_ns(apply_start.elapsed()), Ordering::Relaxed);
             let pos_hash_start = Instant::now();
             let child_pos_hash = ctx.get_hash();
@@ -53,7 +53,7 @@ impl SharedTree {
             let child = self.get_or_create_child(ctx, node_key, player, depth, is_depth_limited);
             let undo_start = Instant::now();
             ctx.undo_move(mov);
-            self.total_move_apply_time_ns
+            self.total_move_undo_time_ns
                 .fetch_add(duration_to_ns(undo_start.elapsed()), Ordering::Relaxed);
             let proof_number = child.get_pn();
             let disproof_number = child.get_dn();

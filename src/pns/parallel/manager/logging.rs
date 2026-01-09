@@ -19,7 +19,8 @@ struct LogCounters {
     children_generated: u64,
     expand_ns: u64,
     movegen_ns: u64,
-    move_apply_ns: u64,
+    move_make_ns: u64,
+    move_undo_ns: u64,
     hash_ns: u64,
     eval_ns: u64,
     eval_calls: u64,
@@ -39,7 +40,8 @@ impl LogCounters {
             children_generated: 0,
             expand_ns: 0,
             movegen_ns: 0,
-            move_apply_ns: 0,
+            move_make_ns: 0,
+            move_undo_ns: 0,
             hash_ns: 0,
             eval_ns: 0,
             eval_calls: 0,
@@ -59,7 +61,8 @@ impl LogCounters {
             children_generated: tree.get_children_generated(),
             expand_ns: tree.get_expand_time_ns(),
             movegen_ns: tree.get_movegen_time_ns(),
-            move_apply_ns: tree.get_move_apply_time_ns(),
+            move_make_ns: tree.get_move_make_time_ns(),
+            move_undo_ns: tree.get_move_undo_time_ns(),
             hash_ns: tree.get_hash_time_ns(),
             eval_ns: tree.get_eval_time_ns(),
             eval_calls: tree.get_eval_calls(),
@@ -82,7 +85,8 @@ impl LogCounters {
             ),
             expand_ns: saturating_diff(current.expand_ns, previous.expand_ns),
             movegen_ns: saturating_diff(current.movegen_ns, previous.movegen_ns),
-            move_apply_ns: saturating_diff(current.move_apply_ns, previous.move_apply_ns),
+            move_make_ns: saturating_diff(current.move_make_ns, previous.move_make_ns),
+            move_undo_ns: saturating_diff(current.move_undo_ns, previous.move_undo_ns),
             hash_ns: saturating_diff(current.hash_ns, previous.hash_ns),
             eval_ns: saturating_diff(current.eval_ns, previous.eval_ns),
             eval_calls: saturating_diff(current.eval_calls, previous.eval_calls),
@@ -107,7 +111,8 @@ impl LogCounters {
             children_generated: self.children_generated,
             expand_ns: self.expand_ns,
             movegen_ns: self.movegen_ns,
-            move_apply_ns: self.move_apply_ns,
+            move_make_ns: self.move_make_ns,
+            move_undo_ns: self.move_undo_ns,
             hash_ns: self.hash_ns,
             node_table_ns: self.node_table_time_ns,
             eval_ns: self.eval_ns,
@@ -212,7 +217,7 @@ pub(super) fn spawn_logger(
     let (log_tx, log_rx) = mpsc::channel::<()>();
     let handle = thread::spawn(move || {
         let mut last_snapshot = LogSnapshot::zero();
-        while !tree.is_solved() {
+        while !tree.should_stop() {
             if log_rx
                 .recv_timeout(std::time::Duration::from_millis(log_interval_ms))
                 .is_ok()

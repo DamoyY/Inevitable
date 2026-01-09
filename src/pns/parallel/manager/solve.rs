@@ -7,7 +7,7 @@ use std::{
 use super::{
     ParallelSolver,
     logging::spawn_logger,
-    metrics::{SummaryBuildInput, TimingInput, build_summary_line},
+    metrics::{SummaryBuildInput, TimingInput, build_summary_line, format_sci_u64},
 };
 use crate::pns::parallel::{context::ThreadLocalContext, shared_tree::SharedTree, worker::Worker};
 
@@ -18,12 +18,15 @@ impl ParallelSolver {
     pub fn solve(&self, verbose: bool) -> bool {
         let start_time = Instant::now();
         let tree = Arc::clone(&self.tree);
+        if tree.stop_requested() {
+            return false;
+        }
         if tree.root.is_terminal() {
             if verbose {
                 println!(
                     "根节点已是终端状态: PN={}, DN={}",
-                    tree.root.get_pn(),
-                    tree.root.get_dn()
+                    format_sci_u64(tree.root.get_pn()),
+                    format_sci_u64(tree.root.get_dn())
                 );
             }
             if tree.root.get_pn() == 0 && !tree.root.is_expanded() {
@@ -48,12 +51,15 @@ impl ParallelSolver {
     fn spawn_workers(&self, tree: &Arc<SharedTree>) -> Vec<thread::JoinHandle<()>> {
         (0..self.num_threads)
             .map(|thread_id| {
-                let tree = Arc::clone(tree);
-                let game_state = self.clone_game_state();
-                thread::spawn(move || {
-                    let ctx = ThreadLocalContext::new(game_state, thread_id);
-                    let mut worker = Worker::new(tree, ctx);
-                    worker.run();
+                thread::spawn({
+                    #[allow(unused_variables)]
+                    let tree = Arc::clone(tree);
+                    #[allow(unused_variables)]
+                    let ctx = ThreadLocalContext::new(self.clone_game_state(), thread_id);
+                    move || {
+                        let mut worker = Worker::new(tree, ctx);
+                        worker.run();
+                    }
                 })
             })
             .collect()
@@ -97,7 +103,8 @@ impl ParallelSolver {
                 children_generated: self.tree.get_children_generated(),
                 expand_ns: self.tree.get_expand_time_ns(),
                 movegen_ns: self.tree.get_movegen_time_ns(),
-                move_apply_ns: self.tree.get_move_apply_time_ns(),
+                move_make_ns: self.tree.get_move_make_time_ns(),
+                move_undo_ns: self.tree.get_move_undo_time_ns(),
                 hash_ns: self.tree.get_hash_time_ns(),
                 node_table_ns: self.tree.get_node_table_time_ns(),
                 eval_ns: self.tree.get_eval_time_ns(),

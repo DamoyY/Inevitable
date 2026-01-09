@@ -141,9 +141,9 @@ impl GomokuGameState {
 
     #[must_use]
     pub fn check_win(&self, player: u8) -> bool {
-        !self
-            .threat_index
+        self.threat_index
             .get_pattern_windows(player, self.win_len, 0)
-            .is_empty()
+            .next()
+            .is_some()
     }
 }

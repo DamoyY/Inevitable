@@ -12,5 +12,5 @@ fn main() {
         println!("\n收到 Ctrl+C，正在退出...");
     })
     .expect("无法设置 Ctrl+C 处理程序");
-    ui::play_game(exit_flag.as_ref());
+    ui::play_game(&exit_flag);
 }

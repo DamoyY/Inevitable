@@ -1,7 +1,4 @@
-use std::{
-    collections::{HashMap, HashSet},
-    sync::LazyLock,
-};
+use std::collections::{HashMap, HashSet};
 #[derive(Clone)]
 pub struct Window {
     pub coords: Vec<(usize, usize)>,
@@ -23,14 +20,151 @@ impl Window {
         }
     }
 }
-static EMPTY_SET: LazyLock<HashSet<usize>> = LazyLock::new(HashSet::new);
+const NONE_INDEX: usize = usize::MAX;
+
+#[derive(Clone, Copy)]
+struct Bucket {
+    head: usize,
+}
+
+#[derive(Clone, Copy)]
+struct BucketNode {
+    prev: usize,
+    next: usize,
+    bucket: usize,
+}
+
+struct PatternBuckets {
+    win_len: usize,
+    window_count: usize,
+    buckets: Vec<Bucket>,
+    nodes: Vec<BucketNode>,
+}
+
+impl PatternBuckets {
+    const fn empty() -> Self {
+        Self {
+            win_len: 0,
+            window_count: 0,
+            buckets: Vec::new(),
+            nodes: Vec::new(),
+        }
+    }
+
+    fn new(win_len: usize, window_count: usize) -> Self {
+        let bucket_count = 2 * (win_len + 1) * (win_len + 1);
+        let buckets = vec![
+            Bucket {
+                head: NONE_INDEX,
+            };
+            bucket_count
+        ];
+        let nodes = vec![
+            BucketNode {
+                prev: NONE_INDEX,
+                next: NONE_INDEX,
+                bucket: NONE_INDEX,
+            };
+            2 * window_count
+        ];
+        Self {
+            win_len,
+            window_count,
+            buckets,
+            nodes,
+        }
+    }
+
+    fn reset(&mut self) {
+        for bucket in &mut self.buckets {
+            bucket.head = NONE_INDEX;
+        }
+        for node in &mut self.nodes {
+            node.prev = NONE_INDEX;
+            node.next = NONE_INDEX;
+            node.bucket = NONE_INDEX;
+        }
+    }
+
+    const fn bucket_index(&self, player: u8, p_count: usize, o_count: usize) -> usize {
+        let player_idx = (player - 1) as usize;
+        (player_idx * (self.win_len + 1) + p_count) * (self.win_len + 1) + o_count
+    }
+
+    const fn node_index(&self, player: u8, window_idx: usize) -> usize {
+        let player_idx = (player - 1) as usize;
+        player_idx * self.window_count + window_idx
+    }
+
+    fn insert(&mut self, player: u8, window_idx: usize, p_count: usize, o_count: usize) {
+        let bucket_idx = self.bucket_index(player, p_count, o_count);
+        let node_idx = self.node_index(player, window_idx);
+        debug_assert_eq!(self.nodes[node_idx].bucket, NONE_INDEX);
+        self.nodes[node_idx].bucket = bucket_idx;
+        self.nodes[node_idx].prev = NONE_INDEX;
+        self.nodes[node_idx].next = self.buckets[bucket_idx].head;
+        if self.buckets[bucket_idx].head != NONE_INDEX {
+            self.nodes[self.buckets[bucket_idx].head].prev = node_idx;
+        }
+        self.buckets[bucket_idx].head = node_idx;
+    }
+
+    fn remove(&mut self, player: u8, window_idx: usize) {
+        let node_idx = self.node_index(player, window_idx);
+        let bucket_idx = self.nodes[node_idx].bucket;
+        if bucket_idx == NONE_INDEX {
+            return;
+        }
+        let prev = self.nodes[node_idx].prev;
+        let next = self.nodes[node_idx].next;
+        if prev == NONE_INDEX {
+            self.buckets[bucket_idx].head = next;
+        } else {
+            self.nodes[prev].next = next;
+        }
+        if next != NONE_INDEX {
+            self.nodes[next].prev = prev;
+        }
+        self.nodes[node_idx].prev = NONE_INDEX;
+        self.nodes[node_idx].next = NONE_INDEX;
+        self.nodes[node_idx].bucket = NONE_INDEX;
+    }
+
+    fn iter(&self, player: u8, p_count: usize, o_count: usize) -> PatternBucketIter<'_> {
+        let bucket_idx = self.bucket_index(player, p_count, o_count);
+        PatternBucketIter {
+            current: self.buckets[bucket_idx].head,
+            nodes: &self.nodes,
+            window_count: self.window_count,
+        }
+    }
+}
+
+struct PatternBucketIter<'a> {
+    current: usize,
+    nodes: &'a [BucketNode],
+    window_count: usize,
+}
+
+impl Iterator for PatternBucketIter<'_> {
+    type Item = usize;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.current == NONE_INDEX {
+            return None;
+        }
+        let node_idx = self.current;
+        self.current = self.nodes[node_idx].next;
+        Some(node_idx % self.window_count)
+    }
+}
 
 pub struct ThreatIndex {
     pub board_size: usize,
     pub win_len: usize,
     pub point_to_windows_map: HashMap<(usize, usize), Vec<usize>>,
     pub all_windows: Vec<Window>,
-    pub pattern_buckets: HashMap<(u8, usize, usize), HashSet<usize>>,
+    pattern_buckets: PatternBuckets,
 }
 
 impl ThreatIndex {
@@ -41,9 +175,11 @@ impl ThreatIndex {
             win_len,
             point_to_windows_map: HashMap::new(),
             all_windows: Vec::new(),
-            pattern_buckets: HashMap::new(),
+            pattern_buckets: PatternBuckets::empty(),
         };
         threat_index.enumerate_windows();
+        threat_index.pattern_buckets =
+            PatternBuckets::new(win_len, threat_index.all_windows.len());
         threat_index
     }
 
@@ -124,7 +260,7 @@ impl ThreatIndex {
             }
         }
 
-        self.pattern_buckets.clear();
+        self.pattern_buckets.reset();
         for window_idx in 0..self.all_windows.len() {
             self.update_bucket_add(window_idx);
         }
@@ -140,26 +276,17 @@ impl ThreatIndex {
     fn update_bucket_add(&mut self, window_idx: usize) {
         let window = &self.all_windows[window_idx];
         let keys = Self::window_bucket_keys(window);
-
         self.pattern_buckets
-            .entry(keys[0])
-            .or_default()
-            .insert(window_idx);
+            .insert(keys[0].0, window_idx, keys[0].1, keys[0].2);
         self.pattern_buckets
-            .entry(keys[1])
-            .or_default()
-            .insert(window_idx);
+            .insert(keys[1].0, window_idx, keys[1].1, keys[1].2);
     }
 
     fn update_bucket_remove(&mut self, window_idx: usize) {
         let window = &self.all_windows[window_idx];
         let keys = Self::window_bucket_keys(window);
-        if let Some(set) = self.pattern_buckets.get_mut(&keys[0]) {
-            set.remove(&window_idx);
-        }
-        if let Some(set) = self.pattern_buckets.get_mut(&keys[1]) {
-            set.remove(&window_idx);
-        }
+        self.pattern_buckets.remove(keys[0].0, window_idx);
+        self.pattern_buckets.remove(keys[1].0, window_idx);
     }
 
     fn apply_window_update(&mut self, mov: (usize, usize), player: u8, is_move: bool) {
@@ -204,15 +331,12 @@ impl ThreatIndex {
         self.apply_window_update(mov, player, false);
     }
 
-    #[must_use]
     pub fn get_pattern_windows(
         &self,
         player: u8,
         p_count: usize,
         o_count: usize,
-    ) -> &HashSet<usize> {
-        self.pattern_buckets
-            .get(&(player, p_count, o_count))
-            .unwrap_or(&EMPTY_SET)
+    ) -> impl Iterator<Item = usize> + '_ {
+        self.pattern_buckets.iter(player, p_count, o_count)
     }
 }

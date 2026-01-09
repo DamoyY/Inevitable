@@ -17,7 +17,7 @@ impl Worker {
     }
 
     pub fn run(&mut self) {
-        while !self.tree.is_solved() {
+        while !self.tree.should_stop() {
             if self.tree.root.get_pn() == u64::MAX {
                 self.tree.mark_solved();
                 break;
@@ -38,7 +38,7 @@ impl Worker {
         self.ctx.clear_path();
         let root = Arc::clone(&self.tree.root);
         let leaf = self.select(root);
-        if self.tree.is_solved() {
+        if self.tree.should_stop() {
             self.backpropagate();
             return;
         }
@@ -56,7 +56,7 @@ impl Worker {
     fn select(&mut self, start: NodeRef) -> Option<NodeRef> {
         let mut current = start;
         loop {
-            if self.tree.is_solved() {
+            if self.tree.should_stop() {
                 return None;
             }
             if current.is_terminal() {

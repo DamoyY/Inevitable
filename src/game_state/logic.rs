@@ -2,12 +2,12 @@ use std::collections::HashSet;
 
 use super::{Bitboard, Coord, ForcingMoves, GomokuGameState};
 impl GomokuGameState {
-    fn collect_empty_cells<'a, I>(&self, window_indices: I) -> HashSet<Coord>
+    fn collect_empty_cells<I>(&self, window_indices: I) -> HashSet<Coord>
     where
-        I: IntoIterator<Item = &'a usize>,
+        I: IntoIterator<Item = usize>,
     {
         let mut cells = HashSet::new();
-        for &window_idx in window_indices {
+        for window_idx in window_indices {
             let window = &self.threat_index.all_windows[window_idx];
             cells.extend(window.empty_cells.iter());
         }
