@@ -1,18 +1,12 @@
-use std::sync::Arc;
-use std::thread;
-use std::time::Instant;
+use std::{sync::Arc, thread, time::Instant};
 
-use crate::pns::parallel::context::ThreadLocalContext;
-
-use super::logging::spawn_logger;
-use crate::pns::parallel::worker::Worker;
-use super::ParallelSolver;
+use super::{ParallelSolver, logging::spawn_logger};
+use crate::pns::parallel::{context::ThreadLocalContext, worker::Worker};
 
 impl ParallelSolver {
     pub fn solve(&self, verbose: bool) -> bool {
         let start_time = Instant::now();
         let tree = Arc::clone(&self.tree);
-
         if tree.root.is_terminal() {
             if verbose {
                 println!(
@@ -21,9 +15,13 @@ impl ParallelSolver {
                     tree.root.get_dn()
                 );
             }
+            if tree.root.get_pn() == 0 && !tree.root.is_expanded() {
+                let mut ctx = ThreadLocalContext::new(self.clone_game_state(), 0);
+                tree.expand_node(&tree.root, &mut ctx);
+                tree.update_node_pdn(&tree.root);
+            }
             return tree.root.get_pn() == 0;
         }
-
         let handles: Vec<_> = (0..self.num_threads)
             .map(|thread_id| {
                 let tree = Arc::clone(&tree);
@@ -68,13 +66,41 @@ impl ParallelSolver {
         } else {
             0.0
         };
-        let avg_expand_ms = if expansions > 0 {
-            self.tree.get_expand_time_ns() as f64 / expansions as f64 / 1_000_000.0
+        let avg_movegen_us = if expansions > 0 {
+            self.tree.get_movegen_time_ns() as f64 / expansions as f64 / 1_000.0
         } else {
             0.0
         };
-        let avg_movegen_ms = if expansions > 0 {
-            self.tree.get_movegen_time_ns() as f64 / expansions as f64 / 1_000_000.0
+        let avg_move_apply_us = if expansions > 0 {
+            self.tree.get_move_apply_time_ns() as f64 / expansions as f64 / 1_000.0
+        } else {
+            0.0
+        };
+        let avg_hash_us = if expansions > 0 {
+            self.tree.get_hash_time_ns() as f64 / expansions as f64 / 1_000.0
+        } else {
+            0.0
+        };
+        let avg_node_table_us = if expansions > 0 {
+            self.tree.get_node_table_time_ns() as f64 / expansions as f64 / 1_000.0
+        } else {
+            0.0
+        };
+        let avg_eval_us_per_expand = if expansions > 0 {
+            self.tree.get_eval_time_ns() as f64 / expansions as f64 / 1_000.0
+        } else {
+            0.0
+        };
+        let avg_expand_other_us = if expansions > 0 {
+            let other_ns = self.tree.get_expand_time_ns().saturating_sub(
+                self.tree
+                    .get_movegen_time_ns()
+                    .saturating_add(self.tree.get_move_apply_time_ns())
+                    .saturating_add(self.tree.get_hash_time_ns())
+                    .saturating_add(self.tree.get_node_table_time_ns())
+                    .saturating_add(self.tree.get_eval_time_ns()),
+            );
+            other_ns as f64 / expansions as f64 / 1_000.0
         } else {
             0.0
         };
@@ -96,7 +122,10 @@ impl ParallelSolver {
 
         if verbose {
             println!(
-                "用时 {:.2} 秒，总迭代次数: {}, 总扩展节点数: {}, TT命中率: {:.1}%, TT写入: {}, 复用表大小: {}, 复用命中率: {:.1}%, 复用节点: {}, 新建节点: {},  平均分支: {:.2}",
+                "用时 {:.2} 秒，总迭代次数: {}, 总扩展节点数: {}, TT命中率: {:.1}%, TT写入: {}, \
+                 复用表大小: {}, 复用命中率: {:.1}%, 复用节点: {}, 新建节点: {}, 平均分支: {:.2}, \
+                 走子生成: {:.3} us，落子/撤销: {:.3} us，哈希: {:.3} us，复用表: {:.3} us，评估: \
+                 {:.3} us，其他: {:.3} us，评估均耗时: {:.3} us，深度截断: {}，提前剪枝: {}",
                 elapsed,
                 iterations,
                 expansions,
@@ -106,12 +135,13 @@ impl ParallelSolver {
                 node_table_hit_rate,
                 node_table_hits,
                 nodes_created,
-                avg_branch
-            );
-            println!(
-                "扩展均耗时: {:.3} ms，走子生成均耗时: {:.3} ms，评估均耗时: {:.3} us，深度截断: {}，提前剪枝: {}",
-                avg_expand_ms,
-                avg_movegen_ms,
+                avg_branch,
+                avg_movegen_us,
+                avg_move_apply_us,
+                avg_hash_us,
+                avg_node_table_us,
+                avg_eval_us_per_expand,
+                avg_expand_other_us,
                 avg_eval_us,
                 self.tree.get_depth_cutoffs(),
                 self.tree.get_early_cutoffs()

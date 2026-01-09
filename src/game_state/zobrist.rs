@@ -1,4 +1,4 @@
-use rand::Rng;
+use rand::{Rng, SeedableRng, rngs::StdRng};
 
 pub struct ZobristHasher {
     pub(crate) board_size: usize,
@@ -8,7 +8,11 @@ pub struct ZobristHasher {
 
 impl ZobristHasher {
     pub fn new(board_size: usize) -> Self {
-        let mut rng = rand::rng();
+        Self::with_seed(board_size, 0x005F_15E5_D0FE_DF9A)
+    }
+
+    pub fn with_seed(board_size: usize, seed: u64) -> Self {
+        let mut rng = StdRng::seed_from_u64(seed);
         let mut zobrist_table = vec![vec![[0u64; 3]; board_size]; board_size];
         for row in zobrist_table.iter_mut() {
             for cell in row.iter_mut() {

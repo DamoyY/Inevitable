@@ -1,7 +1,9 @@
 use std::sync::Arc;
 
-use super::context::ThreadLocalContext;
-use super::shared_tree::SharedTree;
+use super::{
+    context::ThreadLocalContext,
+    shared_tree::{SharedTree, TranspositionTable},
+};
 use crate::game_state::{GomokuGameState, ZobristHasher};
 
 mod logging;
@@ -25,12 +27,38 @@ impl ParallelSolver {
         num_threads: usize,
         log_interval_ms: u64,
     ) -> Self {
+        Self::with_tt(
+            initial_board,
+            board_size,
+            win_len,
+            depth_limit,
+            num_threads,
+            log_interval_ms,
+            None,
+        )
+    }
+
+    pub fn with_tt(
+        initial_board: Vec<Vec<u8>>,
+        board_size: usize,
+        win_len: usize,
+        depth_limit: Option<usize>,
+        num_threads: usize,
+        log_interval_ms: u64,
+        existing_tt: Option<TranspositionTable>,
+    ) -> Self {
         let hasher = Arc::new(ZobristHasher::new(board_size));
         let game_state = GomokuGameState::new(initial_board, hasher, 1, win_len);
         let root_hash = game_state.get_canonical_hash();
         let root_pos_hash = game_state.get_hash();
 
-        let tree = Arc::new(SharedTree::new(1, root_hash, root_pos_hash, depth_limit));
+        let tree = Arc::new(SharedTree::with_tt(
+            1,
+            root_hash,
+            root_pos_hash,
+            depth_limit,
+            existing_tt,
+        ));
 
         tree.evaluate_node(&tree.root, &ThreadLocalContext::new(game_state.clone(), 0));
 
@@ -61,14 +89,36 @@ impl ParallelSolver {
         log_interval_ms: u64,
         verbose: bool,
     ) -> Option<(usize, usize)> {
+        Self::find_best_move_with_tt(
+            initial_board,
+            board_size,
+            win_len,
+            num_threads,
+            log_interval_ms,
+            verbose,
+            None,
+        )
+        .0
+    }
+
+    pub fn find_best_move_with_tt(
+        initial_board: Vec<Vec<u8>>,
+        board_size: usize,
+        win_len: usize,
+        num_threads: usize,
+        log_interval_ms: u64,
+        verbose: bool,
+        existing_tt: Option<TranspositionTable>,
+    ) -> (Option<(usize, usize)>, TranspositionTable) {
         let mut depth = 1usize;
-        let mut solver = ParallelSolver::new(
+        let mut solver = ParallelSolver::with_tt(
             initial_board.clone(),
             board_size,
             win_len,
             Some(depth),
             num_threads,
             log_interval_ms,
+            existing_tt,
         );
 
         loop {
@@ -87,12 +137,16 @@ impl ParallelSolver {
                         best_move
                     );
                 }
-                return best_move;
+                return (best_move, solver.get_tt());
             }
 
             depth += 1;
             solver.increase_depth_limit(depth);
         }
+    }
+
+    pub fn get_tt(&self) -> TranspositionTable {
+        self.tree.get_tt()
     }
 
     pub fn get_best_move(&self) -> Option<(usize, usize)> {

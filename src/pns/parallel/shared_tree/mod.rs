@@ -13,9 +13,11 @@ mod evaluation;
 mod expansion;
 mod update;
 
+pub type TranspositionTable = Arc<DashMap<(u64, u8), TTEntry>>;
+
 pub struct SharedTree {
     pub root: NodeRef,
-    pub transposition_table: DashMap<(u64, u8), TTEntry>,
+    pub transposition_table: TranspositionTable,
     pub node_table: DashMap<(u64, usize), NodeRef>,
     pub depth_limit: Option<usize>,
     pub solved: AtomicBool,
@@ -28,6 +30,9 @@ pub struct SharedTree {
     pub total_eval_time_ns: AtomicU64,
     pub total_expand_time_ns: AtomicU64,
     pub total_movegen_time_ns: AtomicU64,
+    pub total_move_apply_time_ns: AtomicU64,
+    pub total_hash_time_ns: AtomicU64,
+    pub total_node_table_time_ns: AtomicU64,
     pub total_children_generated: AtomicU64,
     pub total_depth_cutoffs: AtomicU64,
     pub total_early_cutoffs: AtomicU64,
@@ -43,13 +48,25 @@ impl SharedTree {
         root_pos_hash: u64,
         depth_limit: Option<usize>,
     ) -> Self {
+        Self::with_tt(root_player, root_hash, root_pos_hash, depth_limit, None)
+    }
+
+    pub fn with_tt(
+        root_player: u8,
+        root_hash: u64,
+        root_pos_hash: u64,
+        depth_limit: Option<usize>,
+        existing_tt: Option<TranspositionTable>,
+    ) -> Self {
         let root = Arc::new(ParallelNode::new(root_player, 0, root_hash, false));
         let node_table = DashMap::new();
         node_table.insert((root_pos_hash, 0), Arc::clone(&root));
 
+        let transposition_table = existing_tt.unwrap_or_else(|| Arc::new(DashMap::new()));
+
         Self {
             root,
-            transposition_table: DashMap::new(),
+            transposition_table,
             node_table,
             depth_limit,
             solved: AtomicBool::new(false),
@@ -62,6 +79,9 @@ impl SharedTree {
             total_eval_time_ns: AtomicU64::new(0),
             total_expand_time_ns: AtomicU64::new(0),
             total_movegen_time_ns: AtomicU64::new(0),
+            total_move_apply_time_ns: AtomicU64::new(0),
+            total_hash_time_ns: AtomicU64::new(0),
+            total_node_table_time_ns: AtomicU64::new(0),
             total_children_generated: AtomicU64::new(0),
             total_depth_cutoffs: AtomicU64::new(0),
             total_early_cutoffs: AtomicU64::new(0),
@@ -194,6 +214,18 @@ impl SharedTree {
         self.total_movegen_time_ns.load(Ordering::Relaxed)
     }
 
+    pub fn get_move_apply_time_ns(&self) -> u64 {
+        self.total_move_apply_time_ns.load(Ordering::Relaxed)
+    }
+
+    pub fn get_hash_time_ns(&self) -> u64 {
+        self.total_hash_time_ns.load(Ordering::Relaxed)
+    }
+
+    pub fn get_node_table_time_ns(&self) -> u64 {
+        self.total_node_table_time_ns.load(Ordering::Relaxed)
+    }
+
     pub fn get_children_generated(&self) -> u64 {
         self.total_children_generated.load(Ordering::Relaxed)
     }
@@ -216,6 +248,10 @@ impl SharedTree {
 
     pub fn get_nodes_created(&self) -> u64 {
         self.total_nodes_created.load(Ordering::Relaxed)
+    }
+
+    pub fn get_tt(&self) -> TranspositionTable {
+        Arc::clone(&self.transposition_table)
     }
 
     pub fn lookup_tt(&self, hash: u64, player: u8) -> Option<TTEntry> {

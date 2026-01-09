@@ -1,6 +1,9 @@
 use std::io::{self, Write};
 
-use crate::{config::Config, pns::ParallelSolver};
+use crate::{
+    config::Config,
+    pns::{ParallelSolver, TranspositionTable},
+};
 
 pub fn print_board(board: &[Vec<u8>]) {
     let board_size = board.len();
@@ -39,6 +42,7 @@ pub fn play_game() {
 
     let mut board = vec![vec![0u8; board_size]; board_size];
     let mut current_player = 1u8;
+    let mut tt: Option<TranspositionTable> = None;
 
     loop {
         let has_stones = board.iter().any(|row| row.iter().any(|&cell| cell != 0));
@@ -54,15 +58,17 @@ pub fn play_game() {
                 (board_size / 2, board_size / 2)
             } else {
                 println!("程序正在思考...");
-                ParallelSolver::find_best_move_iterative_deepening(
+                let (best_move, new_tt) = ParallelSolver::find_best_move_with_tt(
                     board.clone(),
                     board_size,
                     win_len,
                     num_threads,
                     log_interval_ms,
                     config.verbose,
-                )
-                .unwrap()
+                    tt,
+                );
+                tt = Some(new_tt);
+                best_move.unwrap()
             };
             println!("程序选择落子于: {:?}", mov);
             board[mov.0][mov.1] = 1;

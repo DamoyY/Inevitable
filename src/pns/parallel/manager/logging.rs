@@ -1,6 +1,8 @@
-use std::sync::{mpsc, Arc};
-use std::thread;
-use std::time::Instant;
+use std::{
+    sync::{Arc, mpsc},
+    thread,
+    time::Instant,
+};
 
 use super::SharedTree;
 
@@ -15,12 +17,15 @@ pub(super) fn spawn_logger(
         let mut last_children = 0u64;
         let mut last_expand_ns = 0u64;
         let mut last_movegen_ns = 0u64;
+        let mut last_move_apply_ns = 0u64;
+        let mut last_hash_ns = 0u64;
         let mut last_eval_ns = 0u64;
         let mut last_eval_calls = 0u64;
         let mut last_tt_lookups = 0u64;
         let mut last_tt_hits = 0u64;
         let mut last_node_table_lookups = 0u64;
         let mut last_node_table_hits = 0u64;
+        let mut last_node_table_time_ns = 0u64;
         let mut last_nodes_created = 0u64;
         let mut last_time = Instant::now();
 
@@ -40,6 +45,8 @@ pub(super) fn spawn_logger(
             let children_generated = tree.get_children_generated();
             let expand_ns = tree.get_expand_time_ns();
             let movegen_ns = tree.get_movegen_time_ns();
+            let move_apply_ns = tree.get_move_apply_time_ns();
+            let hash_ns = tree.get_hash_time_ns();
             let eval_ns = tree.get_eval_time_ns();
             let eval_calls = tree.get_eval_calls();
             let tt_lookups = tree.get_tt_lookups();
@@ -47,6 +54,7 @@ pub(super) fn spawn_logger(
             let tt_stores = tree.get_tt_stores();
             let node_table_lookups = tree.get_node_table_lookups();
             let node_table_hits = tree.get_node_table_hits();
+            let node_table_time_ns = tree.get_node_table_time_ns();
             let nodes_created = tree.get_nodes_created();
             let root_pn = tree.root.get_pn();
             let root_dn = tree.root.get_dn();
@@ -62,12 +70,15 @@ pub(super) fn spawn_logger(
             let delta_children = children_generated - last_children;
             let delta_expand_ns = expand_ns - last_expand_ns;
             let delta_movegen_ns = movegen_ns - last_movegen_ns;
+            let delta_move_apply_ns = move_apply_ns - last_move_apply_ns;
+            let delta_hash_ns = hash_ns - last_hash_ns;
             let delta_eval_ns = eval_ns - last_eval_ns;
             let delta_eval_calls = eval_calls - last_eval_calls;
             let delta_tt_lookups = tt_lookups - last_tt_lookups;
             let delta_tt_hits = tt_hits - last_tt_hits;
             let delta_node_table_lookups = node_table_lookups - last_node_table_lookups;
             let delta_node_table_hits = node_table_hits - last_node_table_hits;
+            let delta_node_table_time_ns = node_table_time_ns - last_node_table_time_ns;
             let delta_nodes_created = nodes_created - last_nodes_created;
             let ips = if elapsed_since_last > 0.0 {
                 delta_iterations as f64 / elapsed_since_last
@@ -94,13 +105,40 @@ pub(super) fn spawn_logger(
             } else {
                 0.0
             };
-            let avg_expand_ms = if delta_expansions > 0 {
-                delta_expand_ns as f64 / delta_expansions as f64 / 1_000_000.0
+            let avg_movegen_us = if delta_expansions > 0 {
+                delta_movegen_ns as f64 / delta_expansions as f64 / 1_000.0
             } else {
                 0.0
             };
-            let avg_movegen_ms = if delta_expansions > 0 {
-                delta_movegen_ns as f64 / delta_expansions as f64 / 1_000_000.0
+            let avg_move_apply_us = if delta_expansions > 0 {
+                delta_move_apply_ns as f64 / delta_expansions as f64 / 1_000.0
+            } else {
+                0.0
+            };
+            let avg_hash_us = if delta_expansions > 0 {
+                delta_hash_ns as f64 / delta_expansions as f64 / 1_000.0
+            } else {
+                0.0
+            };
+            let avg_node_table_us = if delta_expansions > 0 {
+                delta_node_table_time_ns as f64 / delta_expansions as f64 / 1_000.0
+            } else {
+                0.0
+            };
+            let avg_eval_us_per_expand = if delta_expansions > 0 {
+                delta_eval_ns as f64 / delta_expansions as f64 / 1_000.0
+            } else {
+                0.0
+            };
+            let avg_expand_other_us = if delta_expansions > 0 {
+                let other_ns = delta_expand_ns.saturating_sub(
+                    delta_movegen_ns
+                        .saturating_add(delta_move_apply_ns)
+                        .saturating_add(delta_hash_ns)
+                        .saturating_add(delta_node_table_time_ns)
+                        .saturating_add(delta_eval_ns),
+                );
+                other_ns as f64 / delta_expansions as f64 / 1_000.0
             } else {
                 0.0
             };
@@ -111,7 +149,11 @@ pub(super) fn spawn_logger(
             };
 
             println!(
-                "迭代: {}, 扩展: {}, 根节点 PN/DN: {}/{}, TT大小: {}, TT命中率: {:.1}%, TT写入: {}, 复用表大小: {}, 复用命中率: {:.1}%, 复用节点: {}, 新建节点: {}, 速度: {:.0} iter/s, 扩展: {:.0}/s, 平均分支: {:.2}, 扩展均耗时: {:.3} ms, 走子生成均耗时: {:.3} ms, 评估均耗时: {:.3} us, 深度截断: {}, 提前剪枝: {}",
+                "迭代: {}, 扩展: {}, 根节点 PN/DN: {}/{}, TT大小: {}, TT命中率: {:.1}%, TT写入: \
+                 {}, 复用表大小: {}, 复用命中率: {:.1}%, 复用节点: {}, 新建节点: {}, 速度: {:.0} \
+                 iter/s, 扩展: {:.0}/s, 平均分支: {:.2}, 走子生成: {:.3} us, 落子/撤销: {:.3} us, \
+                 哈希: {:.3} us, 复用表: {:.3} us, 评估: {:.3} us, 其他: {:.3} us, 评估均耗时: \
+                 {:.3} us, 深度截断: {}, 提前剪枝: {}",
                 iterations,
                 expansions,
                 root_pn,
@@ -126,8 +168,12 @@ pub(super) fn spawn_logger(
                 ips,
                 eps,
                 avg_branch,
-                avg_expand_ms,
-                avg_movegen_ms,
+                avg_movegen_us,
+                avg_move_apply_us,
+                avg_hash_us,
+                avg_node_table_us,
+                avg_eval_us_per_expand,
+                avg_expand_other_us,
                 avg_eval_us,
                 depth_cutoffs,
                 early_cutoffs
@@ -138,12 +184,15 @@ pub(super) fn spawn_logger(
             last_children = children_generated;
             last_expand_ns = expand_ns;
             last_movegen_ns = movegen_ns;
+            last_move_apply_ns = move_apply_ns;
+            last_hash_ns = hash_ns;
             last_eval_ns = eval_ns;
             last_eval_calls = eval_calls;
             last_tt_lookups = tt_lookups;
             last_tt_hits = tt_hits;
             last_node_table_lookups = node_table_lookups;
             last_node_table_hits = node_table_hits;
+            last_node_table_time_ns = node_table_time_ns;
             last_nodes_created = nodes_created;
             last_time = now;
         }

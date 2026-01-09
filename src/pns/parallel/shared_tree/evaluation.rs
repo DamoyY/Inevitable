@@ -1,10 +1,7 @@
-use std::sync::atomic::Ordering;
-use std::time::Instant;
+use std::{sync::atomic::Ordering, time::Instant};
 
-use crate::pns::parallel::context::ThreadLocalContext;
-use crate::pns::parallel::node::ParallelNode;
-
-use super::{duration_to_ns, SharedTree};
+use super::{SharedTree, duration_to_ns};
+use crate::pns::parallel::{context::ThreadLocalContext, node::ParallelNode};
 
 impl SharedTree {
     pub fn evaluate_node(&self, node: &ParallelNode, ctx: &ThreadLocalContext) {
