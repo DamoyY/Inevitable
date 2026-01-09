@@ -1,4 +1,4 @@
-board_size: 7
+board_size: 6
 win_len: 5
 initial_depth_limit: 0
 verbose: true
