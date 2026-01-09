@@ -3,10 +3,9 @@ use std::sync::Arc;
 use super::{node::NodeRef, shared_tree::SharedTree};
 impl SharedTree {
     pub fn select_best_child(&self, node: &NodeRef) -> Option<NodeRef> {
-        let children_guard = node.children.read();
-        let children = match children_guard.as_ref() {
-            Some(children) => children,
-            None => return None,
+        let children = {
+            let children_guard = node.children.read();
+            children_guard.as_ref().cloned()?
         };
         if children.is_empty() {
             return None;

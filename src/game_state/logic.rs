@@ -18,34 +18,26 @@ impl GomokuGameState {
         }
         self.candidate_move_history
             .push((mov, newly_added_candidates));
-        let symmetric_coords = self.hasher.get_symmetric_coords(r, c);
-        for (i, (sr, sc)) in symmetric_coords.iter().enumerate() {
-            self.hashes[i] ^= self.hasher.get_hash(*sr, *sc, player as usize);
-        }
-        for hash in &mut self.hashes {
-            *hash ^= self.hasher.side_to_move_hash;
-        }
+        self.hash ^= self.hasher.get_hash(r, c, player as usize);
+        self.hash ^= self.hasher.side_to_move_hash;
     }
 
     pub fn undo_move(&mut self, mov: Coord) {
+        let Some((undone_move, added_by_this_move)) = self.candidate_move_history.pop() else {
+            return;
+        };
         let (r, c) = mov;
         let player = self.board[r][c];
         self.threat_index.update_on_undo(mov, player);
         self.board[r][c] = 0;
         self.bitboard.clear(r, c);
-        let (undone_move, added_by_this_move) = self.candidate_move_history.pop().unwrap();
-        assert_eq!(undone_move, mov, "Undo mismatch");
+        debug_assert_eq!(undone_move, mov, "Undo mismatch");
         self.candidate_moves.insert(undone_move);
         for m in added_by_this_move {
             self.candidate_moves.remove(&m);
         }
-        for hash in &mut self.hashes {
-            *hash ^= self.hasher.side_to_move_hash;
-        }
-        let symmetric_coords = self.hasher.get_symmetric_coords(r, c);
-        for (i, (sr, sc)) in symmetric_coords.iter().enumerate() {
-            self.hashes[i] ^= self.hasher.get_hash(*sr, *sc, player as usize);
-        }
+        self.hash ^= self.hasher.side_to_move_hash;
+        self.hash ^= self.hasher.get_hash(r, c, player as usize);
     }
 
     #[must_use]

@@ -20,7 +20,7 @@ pub struct GomokuGameState {
     pub board_size: usize,
     pub win_len: usize,
     pub hasher: Arc<ZobristHasher>,
-    pub hashes: [u64; 8],
+    pub hash: u64,
     pub threat_index: ThreatIndex,
     pub candidate_moves: HashSet<Coord>,
     pub(crate) candidate_move_history: MoveHistory,
@@ -48,7 +48,7 @@ impl GomokuGameState {
             board_size,
             win_len,
             hasher,
-            hashes: [0u64; 8],
+            hash: 0u64,
             threat_index: ThreatIndex::new(board_size, win_len),
             candidate_moves: HashSet::new(),
             candidate_move_history: Vec::new(),
@@ -77,33 +77,68 @@ impl GomokuGameState {
     }
 
     pub(crate) fn rebuild_hashes(&mut self, player: u8) {
-        self.hashes = [0u64; 8];
+        self.hash = 0;
+        for r in 0..self.board_size {
+            for c in 0..self.board_size {
+                let piece = self.board[r][c];
+                if piece != 0 {
+                    self.hash ^= self.hasher.get_hash(r, c, piece as usize);
+                }
+            }
+        }
+        if player == 2 {
+            self.hash ^= self.hasher.side_to_move_hash;
+        }
+    }
+
+    #[must_use]
+    pub fn get_canonical_hash(&self) -> u64 {
+        let mut hashes = [0u64; 8];
         for r in 0..self.board_size {
             for c in 0..self.board_size {
                 let piece = self.board[r][c];
                 if piece != 0 {
                     let symmetric_coords = self.hasher.get_symmetric_coords(r, c);
                     for (i, (sr, sc)) in symmetric_coords.iter().enumerate() {
-                        self.hashes[i] ^= self.hasher.get_hash(*sr, *sc, piece as usize);
+                        hashes[i] ^= self.hasher.get_hash(*sr, *sc, piece as usize);
                     }
                 }
             }
         }
-        if player == 2 {
-            for hash in &mut self.hashes {
-                *hash ^= self.hasher.side_to_move_hash;
+
+        let base_hash = hashes[0];
+        let side_hash = self.hasher.side_to_move_hash;
+        let side_to_move_is_player2 = if self.hash == base_hash {
+            false
+        } else if self.hash == (base_hash ^ side_hash) {
+            true
+        } else {
+            let mut count1 = 0usize;
+            let mut count2 = 0usize;
+            for row in &self.board {
+                for &cell in row {
+                    if cell == 1 {
+                        count1 += 1;
+                    } else if cell == 2 {
+                        count2 += 1;
+                    }
+                }
+            }
+            count1 > count2
+        };
+
+        if side_to_move_is_player2 {
+            for hash in &mut hashes {
+                *hash ^= side_hash;
             }
         }
-    }
 
-    #[must_use]
-    pub fn get_canonical_hash(&self) -> u64 {
-        self.hashes.iter().copied().min().unwrap_or(0)
+        hashes.iter().copied().min().unwrap_or(0)
     }
 
     #[must_use]
     pub const fn get_hash(&self) -> u64 {
-        self.hashes[0]
+        self.hash
     }
 
     #[must_use]

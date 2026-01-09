@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 pub type NodeRef = Arc<ParallelNode>;
 
+#[derive(Clone)]
 pub struct ChildRef {
     pub node: NodeRef,
     pub mov: (usize, usize),

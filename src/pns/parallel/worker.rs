@@ -64,27 +64,27 @@ impl Worker {
             if !current.is_expanded() {
                 return Some(current);
             }
-            let selection = {
+            let children = {
                 let children_guard = current.children.read();
-                children_guard.as_ref().map_or(None, |children| {
-                    if children.is_empty() {
-                        None
-                    } else {
-                        let is_or_node = current.is_or_node();
-                        let best_child = if is_or_node {
-                            children
-                                .iter()
-                                .min_by_key(|c| (c.node.get_effective_pn(), c.node.get_win_len()))
-                        } else {
-                            children
-                                .iter()
-                                .min_by_key(|c| (c.node.get_effective_dn(), c.node.get_win_len()))
-                        };
-                        best_child.map(|c| (Arc::clone(&c.node), c.mov))
-                    }
-                })
+                children_guard.as_ref().cloned()
             };
-            let Some((best_child, mov)) = selection else {
+            let Some(children) = children else {
+                return Some(current);
+            };
+            if children.is_empty() {
+                return Some(current);
+            }
+            let is_or_node = current.is_or_node();
+            let best_child = if is_or_node {
+                children
+                    .iter()
+                    .min_by_key(|c| (c.node.get_effective_pn(), c.node.get_win_len()))
+            } else {
+                children
+                    .iter()
+                    .min_by_key(|c| (c.node.get_effective_dn(), c.node.get_win_len()))
+            };
+            let Some((best_child, mov)) = best_child.map(|c| (Arc::clone(&c.node), c.mov)) else {
                 return Some(current);
             };
 

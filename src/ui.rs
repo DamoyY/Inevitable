@@ -47,11 +47,7 @@ pub fn play_game() {
         if current_player == 1 {
             if ai_turn(
                 &mut board,
-                board_size,
-                win_len,
-                num_threads,
-                log_interval_ms,
-                config.verbose,
+                &config,
                 !has_stones,
                 &mut tt,
             ) {
@@ -88,14 +84,15 @@ fn print_intro(config: &Config) {
 
 fn ai_turn(
     board: &mut [Vec<u8>],
-    board_size: usize,
-    win_len: usize,
-    num_threads: usize,
-    log_interval_ms: u64,
-    verbose: bool,
+    config: &Config,
     board_empty: bool,
     tt: &mut Option<TranspositionTable>,
 ) -> bool {
+    let board_size = config.board_size;
+    let win_len = config.win_len;
+    let num_threads = config.num_threads;
+    let log_interval_ms = config.log_interval_ms;
+    let verbose = config.verbose;
     println!("\n轮到程序 (X) 落子。");
     let mov = if board_empty {
         (board_size / 2, board_size / 2)

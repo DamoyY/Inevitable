@@ -79,8 +79,11 @@ impl ParallelSolver {
     }
 
     pub fn increase_depth_limit(&mut self, new_limit: usize) {
-        let tree = Arc::get_mut(&mut self.tree).expect("无法取得 SharedTree 的可变引用");
-        tree.increase_depth_limit(new_limit);
+        if let Some(tree) = Arc::get_mut(&mut self.tree) {
+            tree.increase_depth_limit(new_limit);
+        } else {
+            eprintln!("无法取得 SharedTree 的可变引用，跳过深度调整");
+        }
     }
 
     #[must_use]
@@ -161,10 +164,9 @@ impl ParallelSolver {
         if root.get_pn() != 0 {
             return None;
         }
-        let children_guard = root.children.read();
-        let children = match children_guard.as_ref() {
-            Some(children) => children,
-            None => return None,
+        let children = {
+            let children_guard = root.children.read();
+            children_guard.as_ref().cloned()?
         };
         if children.is_empty() {
             return None;
@@ -234,7 +236,7 @@ impl Clone for GomokuGameState {
         let hasher = Arc::clone(&self.hasher);
         let mut state = Self::new(self.board.clone(), hasher, 1, self.win_len);
 
-        state.hashes = self.hashes;
+        state.hash = self.hash;
 
         state
     }

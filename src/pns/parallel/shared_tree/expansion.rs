@@ -10,12 +10,6 @@ use crate::pns::parallel::{
 };
 impl SharedTree {
     pub fn expand_node(&self, node: &NodeRef, ctx: &mut ThreadLocalContext) -> bool {
-        {
-            let read_guard = node.children.read();
-            if read_guard.is_some() {
-                return false;
-            }
-        }
         let expand_start = Instant::now();
         let mut write_guard = node.children.write();
         if write_guard.is_some() {
@@ -29,6 +23,7 @@ impl SharedTree {
             self.total_depth_cutoffs.fetch_add(1, Ordering::Relaxed);
             node.set_depth_cutoff(true);
             node.set_is_depth_limited(true);
+            drop(write_guard);
             self.total_expand_time_ns
                 .fetch_add(duration_to_ns(expand_start.elapsed()), Ordering::Relaxed);
             return true;
@@ -54,8 +49,15 @@ impl SharedTree {
             self.total_node_table_lookups
                 .fetch_add(1, Ordering::Relaxed);
             let node_key = (child_pos_hash, depth + 1);
-            let is_depth_limited = self.depth_limit.is_some_and(|limit| depth + 1 >= limit);
-            let child = self.get_or_create_child(ctx, node_key, player, depth, is_depth_limited);
+            let is_depth_limited =
+                self.depth_limit.is_some_and(|limit| depth + 1 >= limit);
+            let child = self.get_or_create_child(
+                ctx,
+                node_key,
+                player,
+                depth,
+                is_depth_limited,
+            );
             let undo_start = Instant::now();
             ctx.undo_move(mov);
             self.total_move_apply_time_ns
@@ -76,6 +78,7 @@ impl SharedTree {
         self.total_children_generated
             .fetch_add(children.len() as u64, Ordering::Relaxed);
         *write_guard = Some(children);
+        drop(write_guard);
         self.total_expand_time_ns
             .fetch_add(duration_to_ns(expand_start.elapsed()), Ordering::Relaxed);
         true
@@ -83,7 +86,7 @@ impl SharedTree {
 
     fn get_or_create_child(
         &self,
-        ctx: &mut ThreadLocalContext,
+        ctx: &ThreadLocalContext,
         node_key: (u64, usize),
         player: u8,
         depth: usize,

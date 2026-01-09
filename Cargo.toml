@@ -4,10 +4,10 @@ version = "0.0.0"
 edition = "2024"
 
 [dependencies]
-rand = "0.9.2"
-parking_lot = "0.12.5"
-serde = { version = "1.0.228", features = ["derive"] }
-serde_yaml = "0.9.34"
+rand = "*"
+parking_lot = "*"
+serde = { version = "*", features = ["derive"] }
+serde_yaml = "*"
 
 [lints.clippy]
 pedantic = "warn"
