@@ -10,8 +10,8 @@ impl SharedTree {
             return;
         };
         if node.is_depth_limited() && children.is_empty() {
-            node.set_pn(1);
-            node.set_dn(1);
+            node.set_pn(u64::MAX);
+            node.set_dn(u64::MAX);
             node.set_win_len(u64::MAX);
             self.store_tt_if_changed(node, prev_proof, prev_disproof, prev_win_len);
             return;
@@ -98,6 +98,9 @@ impl SharedTree {
         }
         let pn = node.get_pn();
         let dn = node.get_dn();
+        if pn == u64::MAX && dn == u64::MAX {
+            return;
+        }
         let win_len = node.get_win_len();
         if pn == prev_proof && dn == prev_disproof && win_len == prev_win_len {
             return;

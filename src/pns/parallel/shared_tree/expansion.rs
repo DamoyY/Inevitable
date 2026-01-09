@@ -49,15 +49,8 @@ impl SharedTree {
             self.total_node_table_lookups
                 .fetch_add(1, Ordering::Relaxed);
             let node_key = (child_pos_hash, depth + 1);
-            let is_depth_limited =
-                self.depth_limit.is_some_and(|limit| depth + 1 >= limit);
-            let child = self.get_or_create_child(
-                ctx,
-                node_key,
-                player,
-                depth,
-                is_depth_limited,
-            );
+            let is_depth_limited = self.depth_limit.is_some_and(|limit| depth + 1 >= limit);
+            let child = self.get_or_create_child(ctx, node_key, player, depth, is_depth_limited);
             let undo_start = Instant::now();
             ctx.undo_move(mov);
             self.total_move_apply_time_ns
@@ -65,10 +58,11 @@ impl SharedTree {
             let proof_number = child.get_pn();
             let disproof_number = child.get_dn();
             children.push(ChildRef { node: child, mov });
-            if is_or_node && proof_number == 0 {
-                break;
-            }
-            if !is_or_node && disproof_number == 0 {
+            if is_or_node {
+                if proof_number == 0 {
+                    break;
+                }
+            } else if disproof_number == 0 || proof_number == u64::MAX {
                 break;
             }
         }

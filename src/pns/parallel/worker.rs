@@ -14,6 +14,10 @@ impl Worker {
 
     pub fn run(&mut self) {
         while !self.tree.is_solved() {
+            if self.tree.root.get_pn() == u64::MAX {
+                self.tree.mark_solved();
+                break;
+            }
             self.tree.increment_iterations();
             self.one_iteration();
 

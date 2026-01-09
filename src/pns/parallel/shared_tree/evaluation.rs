@@ -18,10 +18,8 @@ impl SharedTree {
                 .fetch_add(duration_to_ns(start.elapsed()), Ordering::Relaxed);
             return;
         }
-
         let mut p1_wins = false;
         let mut p2_wins = false;
-
         if node.depth > 0 {
             let opponent = 3 - node.player;
             if ctx.check_win(opponent) {
@@ -39,7 +37,6 @@ impl SharedTree {
                 p2_wins = true;
             }
         }
-
         if p1_wins {
             node.set_pn(0);
             node.set_dn(u64::MAX);
@@ -54,13 +51,12 @@ impl SharedTree {
             node.set_depth_cutoff(true);
             node.set_is_depth_limited(true);
             node.set_pn(u64::MAX);
-            node.set_dn(0);
+            node.set_dn(u64::MAX);
         } else if let Some(entry) = tt_entry {
             node.set_pn(entry.pn);
             node.set_dn(entry.dn);
             node.set_win_len(entry.win_len);
         }
-
         self.total_eval_time_ns
             .fetch_add(duration_to_ns(start.elapsed()), Ordering::Relaxed);
     }
