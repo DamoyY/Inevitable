@@ -65,7 +65,7 @@ impl ThreadLocalContext {
         self.game_state.get_canonical_hash()
     }
 
-    pub fn get_hash(&self) -> u64 {
+    pub const fn get_hash(&self) -> u64 {
         self.game_state.get_hash()
     }
 

@@ -7,17 +7,16 @@ impl SharedTree {
     pub fn evaluate_node(&self, node: &ParallelNode, ctx: &ThreadLocalContext) {
         let start = Instant::now();
         self.total_eval_calls.fetch_add(1, Ordering::Relaxed);
-        let mut tt_entry = None;
-        if let Some(entry) = self.lookup_tt(node.hash, node.player) {
-            if entry.pn == 0 || entry.dn == 0 {
-                node.set_pn(entry.pn);
-                node.set_dn(entry.dn);
-                node.set_win_len(entry.win_len);
-                self.total_eval_time_ns
-                    .fetch_add(duration_to_ns(start.elapsed()), Ordering::Relaxed);
-                return;
-            }
-            tt_entry = Some(entry);
+        let tt_entry = self.lookup_tt(node.hash, node.player);
+        if let Some(entry) = tt_entry
+            && (entry.pn == 0 || entry.dn == 0)
+        {
+            node.set_pn(entry.pn);
+            node.set_dn(entry.dn);
+            node.set_win_len(entry.win_len);
+            self.total_eval_time_ns
+                .fetch_add(duration_to_ns(start.elapsed()), Ordering::Relaxed);
+            return;
         }
 
         let mut p1_wins = false;

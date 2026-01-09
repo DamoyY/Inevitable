@@ -19,7 +19,7 @@ pub struct ParallelSolver {
 }
 
 impl ParallelSolver {
-    #[must_use] 
+    #[must_use]
     pub fn new(
         initial_board: Vec<Vec<u8>>,
         board_size: usize,
@@ -39,7 +39,7 @@ impl ParallelSolver {
         )
     }
 
-    #[must_use] 
+    #[must_use]
     pub fn with_tt(
         initial_board: Vec<Vec<u8>>,
         board_size: usize,
@@ -83,7 +83,7 @@ impl ParallelSolver {
         tree.increase_depth_limit(new_limit);
     }
 
-    #[must_use] 
+    #[must_use]
     pub fn find_best_move_iterative_deepening(
         initial_board: Vec<Vec<u8>>,
         board_size: usize,
@@ -104,7 +104,7 @@ impl ParallelSolver {
         .0
     }
 
-    #[must_use] 
+    #[must_use]
     pub fn find_best_move_with_tt(
         initial_board: Vec<Vec<u8>>,
         board_size: usize,
@@ -149,22 +149,23 @@ impl ParallelSolver {
         }
     }
 
-    #[must_use] 
+    #[must_use]
     pub fn get_tt(&self) -> TranspositionTable {
         self.tree.get_tt()
     }
 
-    #[must_use] 
+    #[must_use]
     pub fn get_best_move(&self) -> Option<(usize, usize)> {
         let root = &self.tree.root;
 
         if root.get_pn() != 0 {
             return None;
         }
-
         let children_guard = root.children.read();
-        let children = children_guard.as_ref()?;
-
+        let children = match children_guard.as_ref() {
+            Some(children) => children,
+            None => return None,
+        };
         if children.is_empty() {
             return None;
         }
@@ -192,37 +193,37 @@ impl ParallelSolver {
         }
     }
 
-    #[must_use] 
+    #[must_use]
     pub fn root_pn(&self) -> u64 {
         self.tree.root.get_pn()
     }
 
-    #[must_use] 
+    #[must_use]
     pub fn root_dn(&self) -> u64 {
         self.tree.root.get_dn()
     }
 
-    #[must_use] 
+    #[must_use]
     pub fn root_player(&self) -> u8 {
         self.tree.root.player
     }
 
-    #[must_use] 
+    #[must_use]
     pub fn root_win_len(&self) -> u64 {
         self.tree.root.get_win_len()
     }
 
-    #[must_use] 
+    #[must_use]
     pub const fn game_state(&self) -> &GomokuGameState {
         &self.base_game_state
     }
 
-    #[must_use] 
+    #[must_use]
     pub const fn board_size(&self) -> usize {
         self.board_size
     }
 
-    #[must_use] 
+    #[must_use]
     pub const fn win_len(&self) -> usize {
         self.win_len
     }

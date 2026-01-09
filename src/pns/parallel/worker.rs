@@ -1,10 +1,7 @@
-use super::context::ThreadLocalContext;
-use super::node::NodeRef;
-use super::shared_tree::SharedTree;
 use std::sync::Arc;
 
+use super::{context::ThreadLocalContext, node::NodeRef, shared_tree::SharedTree};
 const VIRTUAL_PRESSURE: u64 = 1;
-
 pub struct Worker {
     pub tree: Arc<SharedTree>,
     pub ctx: ThreadLocalContext,
@@ -67,35 +64,28 @@ impl Worker {
             if !current.is_expanded() {
                 return Some(current);
             }
-
-            let best_child = {
+            let selection = {
                 let children_guard = current.children.read();
-                let children = match children_guard.as_ref() {
-                    Some(c) if !c.is_empty() => c,
-                    _ => {
-                        drop(children_guard);
-                        return Some(current);
+                children_guard.as_ref().map_or(None, |children| {
+                    if children.is_empty() {
+                        None
+                    } else {
+                        let is_or_node = current.is_or_node();
+                        let best_child = if is_or_node {
+                            children
+                                .iter()
+                                .min_by_key(|c| (c.node.get_effective_pn(), c.node.get_win_len()))
+                        } else {
+                            children
+                                .iter()
+                                .min_by_key(|c| (c.node.get_effective_dn(), c.node.get_win_len()))
+                        };
+                        best_child.map(|c| (Arc::clone(&c.node), c.mov))
                     }
-                };
-
-                let is_or_node = current.is_or_node();
-
-                let best = if is_or_node {
-                    children
-                        .iter()
-                        .min_by_key(|c| (c.node.get_effective_pn(), c.node.get_win_len()))
-                } else {
-                    children
-                        .iter()
-                        .min_by_key(|c| (c.node.get_effective_dn(), c.node.get_win_len()))
-                };
-
-                best.map(|c| (Arc::clone(&c.node), c.mov))
+                })
             };
-
-            let (best_child, mov) = match best_child {
-                Some(c) => c,
-                None => return Some(current),
+            let Some((best_child, mov)) = selection else {
+                return Some(current);
             };
 
             if best_child.is_terminal() {

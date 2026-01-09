@@ -30,19 +30,21 @@ pub struct GomokuGameState {
 }
 
 impl GomokuGameState {
-    #[must_use] 
+    #[must_use]
     pub fn new(
         initial_board: Vec<Vec<u8>>,
         hasher: Arc<ZobristHasher>,
         current_player: u8,
         win_len: usize,
     ) -> Self {
-        let board_size = initial_board.len();
+        let board = initial_board;
+        let board_size = board.len();
+        let bitboard = Bitboard::from_board(&board);
         let (proximity_kernel, proximity_scale) = Self::init_proximity_kernel(board_size);
         let positional_bonus = Self::init_positional_bonus(board_size);
         let mut state = Self {
-            board: initial_board.clone(),
-            bitboard: Bitboard::from_board(&initial_board),
+            board,
+            bitboard,
             board_size,
             win_len,
             hasher,
@@ -94,17 +96,17 @@ impl GomokuGameState {
         }
     }
 
-    #[must_use] 
+    #[must_use]
     pub fn get_canonical_hash(&self) -> u64 {
-        *self.hashes.iter().min().unwrap()
+        self.hashes.iter().copied().min().unwrap_or(0)
     }
 
-    #[must_use] 
+    #[must_use]
     pub const fn get_hash(&self) -> u64 {
         self.hashes[0]
     }
 
-    #[must_use] 
+    #[must_use]
     pub fn check_win(&self, player: u8) -> bool {
         !self
             .threat_index

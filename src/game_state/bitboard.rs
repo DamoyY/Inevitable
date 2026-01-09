@@ -117,15 +117,15 @@ impl Bitboard {
         result
     }
 
-    fn bitwise_or(&self, a: &[u64], b: &[u64]) -> Vec<u64> {
+    fn bitwise_or(a: &[u64], b: &[u64]) -> Vec<u64> {
         a.iter().zip(b.iter()).map(|(x, y)| x | y).collect()
     }
 
-    fn bitwise_and_not(&self, a: &[u64], b: &[u64]) -> Vec<u64> {
+    fn bitwise_and_not(a: &[u64], b: &[u64]) -> Vec<u64> {
         a.iter().zip(b.iter()).map(|(x, y)| x & !y).collect()
     }
 
-    fn apply_mask(&self, bits: &mut [u64]) {
+    const fn apply_mask(&self, bits: &mut [u64]) {
         if let Some(last) = bits.last_mut() {
             *last &= self.last_word_mask();
         }
@@ -136,8 +136,8 @@ impl Bitboard {
         let size = self.size;
         let left_mask = self.col_mask(0);
         let right_mask = self.col_mask(size - 1);
-        let masked_not_left = self.bitwise_and_not(bb, &left_mask);
-        let masked_not_right = self.bitwise_and_not(bb, &right_mask);
+        let masked_not_left = Self::bitwise_and_not(bb, &left_mask);
+        let masked_not_right = Self::bitwise_and_not(bb, &right_mask);
         let shifted_left = self.shift_right(&masked_not_left, 1);
         let shifted_right = self.shift_left(&masked_not_right, 1);
         let shifted_up = self.shift_right(bb, size);
@@ -147,14 +147,14 @@ impl Bitboard {
         let shifted_down_left = self.shift_left(&masked_not_left, size - 1);
         let shifted_down_right = self.shift_left(&masked_not_right, size + 1);
         let mut result = bb.to_vec();
-        result = self.bitwise_or(&result, &shifted_left);
-        result = self.bitwise_or(&result, &shifted_right);
-        result = self.bitwise_or(&result, &shifted_up);
-        result = self.bitwise_or(&result, &shifted_down);
-        result = self.bitwise_or(&result, &shifted_up_left);
-        result = self.bitwise_or(&result, &shifted_up_right);
-        result = self.bitwise_or(&result, &shifted_down_left);
-        result = self.bitwise_or(&result, &shifted_down_right);
+        result = Self::bitwise_or(&result, &shifted_left);
+        result = Self::bitwise_or(&result, &shifted_right);
+        result = Self::bitwise_or(&result, &shifted_up);
+        result = Self::bitwise_or(&result, &shifted_down);
+        result = Self::bitwise_or(&result, &shifted_up_left);
+        result = Self::bitwise_or(&result, &shifted_up_right);
+        result = Self::bitwise_or(&result, &shifted_down_left);
+        result = Self::bitwise_or(&result, &shifted_down_right);
         self.apply_mask(&mut result);
         result
     }
@@ -162,7 +162,7 @@ impl Bitboard {
     #[must_use] 
     pub fn neighbors(&self, bb: &[u64]) -> Vec<u64> {
         let dilated = self.dilate(bb);
-        self.bitwise_and_not(&dilated, bb)
+        Self::bitwise_and_not(&dilated, bb)
     }
 
     fn col_mask(&self, col: usize) -> Vec<u64> {

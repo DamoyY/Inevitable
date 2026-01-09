@@ -7,8 +7,9 @@ impl GomokuGameState {
         let mut proximity_kernel = vec![vec![0.0f32; k_size]; k_size];
         for (r, row) in proximity_kernel.iter_mut().enumerate() {
             for (c, cell) in row.iter_mut().enumerate() {
-                let dist = (r as i32 - k_center as i32).abs() + (c as i32 - k_center as i32).abs();
-                *cell = 1.0 / (dist as f32 + 1.0);
+                let dist = r.abs_diff(k_center) + c.abs_diff(k_center);
+                let dist_u16 = u16::try_from(dist).unwrap_or(u16::MAX);
+                *cell = 1.0 / (f32::from(dist_u16) + 1.0);
             }
         }
         (proximity_kernel, 60.0)
@@ -19,15 +20,17 @@ impl GomokuGameState {
         let mut positional_bonus = vec![vec![0.0f32; board_size]; board_size];
         for (r, row) in positional_bonus.iter_mut().enumerate() {
             for (c, cell) in row.iter_mut().enumerate() {
-                let bonus = (center as i32 - (r as i32 - center as i32).abs())
-                    + (center as i32 - (c as i32 - center as i32).abs());
-                *cell = bonus as f32 * 0.1;
+                let row_bonus = center.saturating_sub(center.abs_diff(r));
+                let col_bonus = center.saturating_sub(center.abs_diff(c));
+                let bonus = row_bonus + col_bonus;
+                let bonus_u16 = u16::try_from(bonus).unwrap_or(u16::MAX);
+                *cell = f32::from(bonus_u16) * 0.1;
             }
         }
         positional_bonus
     }
 
-    pub(crate) fn conv2d(&self, input: &[Vec<f32>], kernel: &[Vec<f32>]) -> Vec<Vec<f32>> {
+    pub(crate) fn conv2d(input: &[Vec<f32>], kernel: &[Vec<f32>]) -> Vec<Vec<f32>> {
         let input_h = input.len();
         let input_w = input[0].len();
         let kernel_h = kernel.len();
@@ -40,10 +43,14 @@ impl GomokuGameState {
                 let mut sum = 0.0f32;
                 for (ki, kernel_row) in kernel.iter().enumerate() {
                     for (kj, &kernel_val) in kernel_row.iter().enumerate() {
-                        let ii = i as i32 + ki as i32 - pad_h as i32;
-                        let jj = j as i32 + kj as i32 - pad_w as i32;
-                        if ii >= 0 && ii < input_h as i32 && jj >= 0 && jj < input_w as i32 {
-                            sum += input[ii as usize][jj as usize] * kernel_val;
+                        let ii = i + ki;
+                        let jj = j + kj;
+                        if ii >= pad_h && jj >= pad_w {
+                            let ii_idx = ii - pad_h;
+                            let jj_idx = jj - pad_w;
+                            if ii_idx < input_h && jj_idx < input_w {
+                                sum += input[ii_idx][jj_idx] * kernel_val;
+                            }
                         }
                     }
                 }
@@ -54,27 +61,6 @@ impl GomokuGameState {
     }
 
     pub(crate) fn score_moves(&self, player: u8, moves_to_score: &[Coord]) -> Vec<(Coord, f32)> {
-        if moves_to_score.is_empty() {
-            return Vec::new();
-        }
-        let mut p_board = vec![vec![0.0f32; self.board_size]; self.board_size];
-        for (r, (board_row, p_board_row)) in self.board.iter().zip(p_board.iter_mut()).enumerate() {
-            for (c, (&board_val, p_board_val)) in
-                board_row.iter().zip(p_board_row.iter_mut()).enumerate()
-            {
-                if board_val == player {
-                    *p_board_val = 1.0;
-                }
-                let _ = (r, c);
-            }
-        }
-        let mut total_scores = self.positional_bonus.clone();
-        let proximity_conv = self.conv2d(&p_board, &self.proximity_kernel);
-        for (total_row, conv_row) in total_scores.iter_mut().zip(proximity_conv.iter()) {
-            for (total_cell, &conv_val) in total_row.iter_mut().zip(conv_row.iter()) {
-                *total_cell += conv_val * self.proximity_scale;
-            }
-        }
         const SCORE_WIN: f32 = 10_000_000.0;
         const SCORE_LIVE_FOUR: f32 = 500_000.0;
         const SCORE_BLOCKED_FOUR: f32 = 15_000.0;
@@ -84,6 +70,25 @@ impl GomokuGameState {
         const SCORE_BLOCK_LIVE_FOUR: f32 = 400_000.0;
         const SCORE_BLOCK_BLOCKED_FOUR: f32 = 12_000.0;
         const SCORE_BLOCK_LIVE_THREE: f32 = 8_000.0;
+
+        if moves_to_score.is_empty() {
+            return Vec::new();
+        }
+        let mut p_board = vec![vec![0.0f32; self.board_size]; self.board_size];
+        for (board_row, p_board_row) in self.board.iter().zip(p_board.iter_mut()) {
+            for (&board_val, p_board_val) in board_row.iter().zip(p_board_row.iter_mut()) {
+                if board_val == player {
+                    *p_board_val = 1.0;
+                }
+            }
+        }
+        let mut total_scores = self.positional_bonus.clone();
+        let proximity_conv = Self::conv2d(&p_board, &self.proximity_kernel);
+        for (total_row, conv_row) in total_scores.iter_mut().zip(proximity_conv.iter()) {
+            for (total_cell, &conv_val) in total_row.iter_mut().zip(conv_row.iter()) {
+                *total_cell += conv_val * self.proximity_scale;
+            }
+        }
         let patterns_to_score = [
             (self.win_len - 1, 0, SCORE_WIN),
             (self.win_len - 2, 0, SCORE_LIVE_FOUR),

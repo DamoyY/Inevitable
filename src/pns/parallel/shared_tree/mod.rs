@@ -1,24 +1,23 @@
-use std::collections::{HashSet, VecDeque};
-use std::sync::{
-    Arc,
-    atomic::{AtomicBool, AtomicU64, Ordering},
+use std::{
+    collections::{HashMap, HashSet, VecDeque},
+    sync::{
+        Arc,
+        atomic::{AtomicBool, AtomicU64, Ordering},
+    },
 };
 
-use dashmap::DashMap;
+use parking_lot::RwLock;
 
 use super::node::{NodeRef, ParallelNode};
 use crate::pns::TTEntry;
-
 mod evaluation;
 mod expansion;
 mod update;
-
-pub type TranspositionTable = Arc<DashMap<(u64, u8), TTEntry>>;
-
+pub type TranspositionTable = Arc<RwLock<HashMap<(u64, u8), TTEntry>>>;
 pub struct SharedTree {
     pub root: NodeRef,
     pub transposition_table: TranspositionTable,
-    pub node_table: DashMap<(u64, usize), NodeRef>,
+    pub node_table: RwLock<HashMap<(u64, usize), NodeRef>>,
     pub depth_limit: Option<usize>,
     pub solved: AtomicBool,
     pub total_iterations: AtomicU64,
@@ -42,7 +41,7 @@ pub struct SharedTree {
 }
 
 impl SharedTree {
-    #[must_use] 
+    #[must_use]
     pub fn new(
         root_player: u8,
         root_hash: u64,
@@ -52,7 +51,7 @@ impl SharedTree {
         Self::with_tt(root_player, root_hash, root_pos_hash, depth_limit, None)
     }
 
-    #[must_use] 
+    #[must_use]
     pub fn with_tt(
         root_player: u8,
         root_hash: u64,
@@ -61,15 +60,14 @@ impl SharedTree {
         existing_tt: Option<TranspositionTable>,
     ) -> Self {
         let root = Arc::new(ParallelNode::new(root_player, 0, root_hash, false));
-        let node_table = DashMap::new();
+        let mut node_table = HashMap::new();
         node_table.insert((root_pos_hash, 0), Arc::clone(&root));
-
-        let transposition_table = existing_tt.unwrap_or_else(|| Arc::new(DashMap::new()));
-
+        let transposition_table =
+            existing_tt.unwrap_or_else(|| Arc::new(RwLock::new(HashMap::new())));
         Self {
             root,
             transposition_table,
-            node_table,
+            node_table: RwLock::new(node_table),
             depth_limit,
             solved: AtomicBool::new(false),
             total_iterations: AtomicU64::new(0),
@@ -256,26 +254,36 @@ impl SharedTree {
         Arc::clone(&self.transposition_table)
     }
 
+    pub fn get_tt_size(&self) -> usize {
+        self.transposition_table.read().len()
+    }
+
+    pub fn get_node_table_size(&self) -> usize {
+        self.node_table.read().len()
+    }
+
     pub fn lookup_tt(&self, hash: u64, player: u8) -> Option<TTEntry> {
         self.total_tt_lookups.fetch_add(1, Ordering::Relaxed);
-        let entry = self.transposition_table.get(&(hash, player));
+        let entry = self
+            .transposition_table
+            .read()
+            .get(&(hash, player))
+            .copied();
         if entry.is_some() {
             self.total_tt_hits.fetch_add(1, Ordering::Relaxed);
         }
-        entry.map(|e| *e)
+        entry
     }
 
     pub fn store_tt(&self, hash: u64, player: u8, entry: TTEntry) {
-        self.transposition_table.insert((hash, player), entry);
+        self.transposition_table
+            .write()
+            .insert((hash, player), entry);
         self.total_tt_stores.fetch_add(1, Ordering::Relaxed);
     }
 }
 
 pub(super) fn duration_to_ns(duration: std::time::Duration) -> u64 {
     let nanos = duration.as_nanos();
-    if nanos > u128::from(u64::MAX) {
-        u64::MAX
-    } else {
-        nanos as u64
-    }
+    u64::try_from(nanos).unwrap_or(u64::MAX)
 }

@@ -1,9 +1,13 @@
-use super::{node::NodeRef, shared_tree::SharedTree};
 use std::sync::Arc;
+
+use super::{node::NodeRef, shared_tree::SharedTree};
 impl SharedTree {
     pub fn select_best_child(&self, node: &NodeRef) -> Option<NodeRef> {
         let children_guard = node.children.read();
-        let children = children_guard.as_ref()?;
+        let children = match children_guard.as_ref() {
+            Some(children) => children,
+            None => return None,
+        };
         if children.is_empty() {
             return None;
         }

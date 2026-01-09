@@ -10,7 +10,7 @@ pub struct Config {
     pub log_interval_ms: u64,
 }
 impl Config {
-    #[must_use] 
+    #[must_use]
     pub fn load() -> Self {
         let config_str = fs::read_to_string("config.yaml").expect("无法读取 config.yaml");
         let mut config: Self = serde_yaml::from_str(&config_str).expect("解析 config.yaml 失败");

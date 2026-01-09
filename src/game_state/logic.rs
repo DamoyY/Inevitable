@@ -12,9 +12,8 @@ impl GomokuGameState {
         let occupied = self.bitboard.occupied();
         let all_neighbors = self.bitboard.neighbors(&occupied);
         for coord in self.bitboard.iter_bits(&all_neighbors) {
-            if !self.candidate_moves.contains(&coord) {
+            if self.candidate_moves.insert(coord) {
                 newly_added_candidates.insert(coord);
-                self.candidate_moves.insert(coord);
             }
         }
         self.candidate_move_history
@@ -49,7 +48,7 @@ impl GomokuGameState {
         }
     }
 
-    #[must_use] 
+    #[must_use]
     pub fn find_forcing_moves(&self, player: u8) -> ForcingMoves {
         let opponent = 3 - player;
         let mut win_in_one_moves = HashSet::new();
@@ -74,7 +73,7 @@ impl GomokuGameState {
         )
     }
 
-    #[must_use] 
+    #[must_use]
     pub fn get_legal_moves(&self, player: u8) -> Vec<Coord> {
         let (win_moves, threat_moves) = self.find_forcing_moves(player);
 
@@ -84,7 +83,7 @@ impl GomokuGameState {
         if !threat_moves.is_empty() {
             let scores = self.score_moves(player, &threat_moves);
             let mut scored_moves: Vec<(Coord, f32)> = scores;
-            scored_moves.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+            scored_moves.sort_by(|a, b| b.1.total_cmp(&a.1));
             return scored_moves.into_iter().map(|(coord, _)| coord).collect();
         }
         let empty_bits = self.bitboard.empty();
@@ -94,7 +93,7 @@ impl GomokuGameState {
         let empties: Vec<Coord> = self.bitboard.iter_bits(&empty_bits).collect();
         let scores = self.score_moves(player, &empties);
         let mut scored_moves: Vec<(Coord, f32)> = scores;
-        scored_moves.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+        scored_moves.sort_by(|a, b| b.1.total_cmp(&a.1));
         scored_moves.into_iter().map(|(coord, _)| coord).collect()
     }
 }

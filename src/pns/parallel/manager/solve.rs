@@ -3,8 +3,29 @@ use std::{sync::Arc, thread, time::Instant};
 use super::{ParallelSolver, logging::spawn_logger};
 use crate::pns::parallel::{context::ThreadLocalContext, worker::Worker};
 
+fn to_f64(value: u64) -> f64 {
+    let value_u32 = u32::try_from(value).unwrap_or(u32::MAX);
+    f64::from(value_u32)
+}
+
+fn percentage(part: u64, total: u64) -> f64 {
+    if total > 0 {
+        to_f64(part) / to_f64(total) * 100.0
+    } else {
+        0.0
+    }
+}
+
+fn avg_us(total_ns: u64, count: u64) -> f64 {
+    if count > 0 {
+        to_f64(total_ns) / to_f64(count) / 1_000.0
+    } else {
+        0.0
+    }
+}
+
 impl ParallelSolver {
-    #[must_use] 
+    #[must_use]
     pub fn solve(&self, verbose: bool) -> bool {
         let start_time = Instant::now();
         let tree = Arc::clone(&self.tree);
@@ -52,6 +73,29 @@ impl ParallelSolver {
         }
 
         let elapsed = start_time.elapsed().as_secs_f64();
+        if verbose {
+            self.print_summary(elapsed);
+        }
+
+        self.tree.root.get_pn() == 0
+    }
+
+    fn avg_expand_other_us(&self, expansions: u64) -> f64 {
+        if expansions == 0 {
+            return 0.0;
+        }
+        let other_ns = self.tree.get_expand_time_ns().saturating_sub(
+            self.tree
+                .get_movegen_time_ns()
+                .saturating_add(self.tree.get_move_apply_time_ns())
+                .saturating_add(self.tree.get_hash_time_ns())
+                .saturating_add(self.tree.get_node_table_time_ns())
+                .saturating_add(self.tree.get_eval_time_ns()),
+        );
+        to_f64(other_ns) / to_f64(expansions) / 1_000.0
+    }
+
+    fn print_summary(&self, elapsed: f64) {
         let iterations = self.tree.get_iterations();
         let expansions = self.tree.get_expansions();
         let tt_lookups = self.tree.get_tt_lookups();
@@ -60,95 +104,49 @@ impl ParallelSolver {
         let node_table_lookups = self.tree.get_node_table_lookups();
         let node_table_hits = self.tree.get_node_table_hits();
         let nodes_created = self.tree.get_nodes_created();
-        let node_table_size = self.tree.node_table.len();
+        let node_table_size = self.tree.get_node_table_size();
         let children_generated = self.tree.get_children_generated();
+        let eval_calls = self.tree.get_eval_calls();
+
         let avg_branch = if expansions > 0 {
-            children_generated as f64 / expansions as f64
+            to_f64(children_generated) / to_f64(expansions)
         } else {
             0.0
         };
-        let avg_movegen_us = if expansions > 0 {
-            self.tree.get_movegen_time_ns() as f64 / expansions as f64 / 1_000.0
-        } else {
-            0.0
-        };
-        let avg_move_apply_us = if expansions > 0 {
-            self.tree.get_move_apply_time_ns() as f64 / expansions as f64 / 1_000.0
-        } else {
-            0.0
-        };
-        let avg_hash_us = if expansions > 0 {
-            self.tree.get_hash_time_ns() as f64 / expansions as f64 / 1_000.0
-        } else {
-            0.0
-        };
-        let avg_node_table_us = if expansions > 0 {
-            self.tree.get_node_table_time_ns() as f64 / expansions as f64 / 1_000.0
-        } else {
-            0.0
-        };
-        let avg_eval_us_per_expand = if expansions > 0 {
-            self.tree.get_eval_time_ns() as f64 / expansions as f64 / 1_000.0
-        } else {
-            0.0
-        };
-        let avg_expand_other_us = if expansions > 0 {
-            let other_ns = self.tree.get_expand_time_ns().saturating_sub(
-                self.tree
-                    .get_movegen_time_ns()
-                    .saturating_add(self.tree.get_move_apply_time_ns())
-                    .saturating_add(self.tree.get_hash_time_ns())
-                    .saturating_add(self.tree.get_node_table_time_ns())
-                    .saturating_add(self.tree.get_eval_time_ns()),
-            );
-            other_ns as f64 / expansions as f64 / 1_000.0
-        } else {
-            0.0
-        };
-        let avg_eval_us = if self.tree.get_eval_calls() > 0 {
-            self.tree.get_eval_time_ns() as f64 / self.tree.get_eval_calls() as f64 / 1_000.0
-        } else {
-            0.0
-        };
-        let tt_hit_rate = if tt_lookups > 0 {
-            tt_hits as f64 / tt_lookups as f64 * 100.0
-        } else {
-            0.0
-        };
-        let node_table_hit_rate = if node_table_lookups > 0 {
-            node_table_hits as f64 / node_table_lookups as f64 * 100.0
-        } else {
-            0.0
-        };
+        let avg_movegen_us = avg_us(self.tree.get_movegen_time_ns(), expansions);
+        let avg_move_apply_us = avg_us(self.tree.get_move_apply_time_ns(), expansions);
+        let avg_hash_us = avg_us(self.tree.get_hash_time_ns(), expansions);
+        let avg_node_table_us = avg_us(self.tree.get_node_table_time_ns(), expansions);
+        let avg_eval_us_per_expand = avg_us(self.tree.get_eval_time_ns(), expansions);
+        let avg_expand_other_us = self.avg_expand_other_us(expansions);
+        let avg_eval_us = avg_us(self.tree.get_eval_time_ns(), eval_calls);
+        let tt_hit_rate = percentage(tt_hits, tt_lookups);
+        let node_table_hit_rate = percentage(node_table_hits, node_table_lookups);
 
-        if verbose {
-            println!(
-                "用时 {:.2} 秒，总迭代次数: {}, 总扩展节点数: {}, TT命中率: {:.1}%, TT写入: {}, \
-                 复用表大小: {}, 复用命中率: {:.1}%, 复用节点: {}, 新建节点: {}, 平均分支: {:.2}, \
-                 走子生成: {:.3} us，落子/撤销: {:.3} us，哈希: {:.3} us，复用表: {:.3} us，评估: \
-                 {:.3} us，其他: {:.3} us，评估均耗时: {:.3} us，深度截断: {}，提前剪枝: {}",
-                elapsed,
-                iterations,
-                expansions,
-                tt_hit_rate,
-                tt_stores,
-                node_table_size,
-                node_table_hit_rate,
-                node_table_hits,
-                nodes_created,
-                avg_branch,
-                avg_movegen_us,
-                avg_move_apply_us,
-                avg_hash_us,
-                avg_node_table_us,
-                avg_eval_us_per_expand,
-                avg_expand_other_us,
-                avg_eval_us,
-                self.tree.get_depth_cutoffs(),
-                self.tree.get_early_cutoffs()
-            );
-        }
-
-        self.tree.root.get_pn() == 0
+        println!(
+            "用时 {:.2} 秒，总迭代次数: {}, 总扩展节点数: {}, TT命中率: {:.1}%, TT写入: {}, \
+             复用表大小: {}, 复用命中率: {:.1}%, 复用节点: {}, 新建节点: {}, 平均分支: {:.2}, \
+             走子生成: {:.3} us，落子/撤销: {:.3} us，哈希: {:.3} us，复用表: {:.3} us，评估: \
+             {:.3} us，其他: {:.3} us，评估均耗时: {:.3} us，深度截断: {}，提前剪枝: {}",
+            elapsed,
+            iterations,
+            expansions,
+            tt_hit_rate,
+            tt_stores,
+            node_table_size,
+            node_table_hit_rate,
+            node_table_hits,
+            nodes_created,
+            avg_branch,
+            avg_movegen_us,
+            avg_move_apply_us,
+            avg_hash_us,
+            avg_node_table_us,
+            avg_eval_us_per_expand,
+            avg_expand_other_us,
+            avg_eval_us,
+            self.tree.get_depth_cutoffs(),
+            self.tree.get_early_cutoffs()
+        );
     }
 }
