@@ -1,6 +1,10 @@
 use std::sync::Arc;
 
-use super::{context::ThreadLocalContext, node::NodeRef, shared_tree::SharedTree};
+use super::{
+    context::ThreadLocalContext,
+    node::{ChildRef, NodeRef},
+    shared_tree::SharedTree,
+};
 const VIRTUAL_PRESSURE: u64 = 1;
 pub struct Worker {
     pub tree: Arc<SharedTree>,
@@ -68,38 +72,18 @@ impl Worker {
             if !current.is_expanded() {
                 return Some(current);
             }
-            let children = {
-                let children_guard = current.children.read();
-                children_guard.as_ref().cloned()
-            };
-            let Some(children) = children else {
+            let Some(ChildRef {
+                node: best_child,
+                mov,
+            }) = self.tree.select_best_child(&current)
+            else {
                 return Some(current);
             };
-            if children.is_empty() {
-                return Some(current);
-            }
-            let is_or_node = current.is_or_node();
-            let best_child = if is_or_node {
-                children
-                    .iter()
-                    .min_by_key(|c| (c.node.get_effective_pn(), c.node.get_win_len()))
-            } else {
-                children
-                    .iter()
-                    .min_by_key(|c| (c.node.get_effective_dn(), c.node.get_win_len()))
-            };
-            let Some((best_child, mov)) = best_child.map(|c| (Arc::clone(&c.node), c.mov)) else {
-                return Some(current);
-            };
-
             if best_child.is_terminal() {
                 return Some(best_child);
             }
-
             let player = current.player;
-
             best_child.add_virtual_pressure(VIRTUAL_PRESSURE, VIRTUAL_PRESSURE);
-
             self.ctx.make_move(mov, player);
             self.ctx.push_path(
                 Arc::clone(&best_child),
@@ -108,7 +92,6 @@ impl Worker {
                 VIRTUAL_PRESSURE,
                 VIRTUAL_PRESSURE,
             );
-
             current = best_child;
         }
     }
