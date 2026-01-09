@@ -19,6 +19,7 @@ pub struct ParallelSolver {
 }
 
 impl ParallelSolver {
+    #[must_use] 
     pub fn new(
         initial_board: Vec<Vec<u8>>,
         board_size: usize,
@@ -38,6 +39,7 @@ impl ParallelSolver {
         )
     }
 
+    #[must_use] 
     pub fn with_tt(
         initial_board: Vec<Vec<u8>>,
         board_size: usize,
@@ -81,6 +83,7 @@ impl ParallelSolver {
         tree.increase_depth_limit(new_limit);
     }
 
+    #[must_use] 
     pub fn find_best_move_iterative_deepening(
         initial_board: Vec<Vec<u8>>,
         board_size: usize,
@@ -101,6 +104,7 @@ impl ParallelSolver {
         .0
     }
 
+    #[must_use] 
     pub fn find_best_move_with_tt(
         initial_board: Vec<Vec<u8>>,
         board_size: usize,
@@ -111,8 +115,8 @@ impl ParallelSolver {
         existing_tt: Option<TranspositionTable>,
     ) -> (Option<(usize, usize)>, TranspositionTable) {
         let mut depth = 1usize;
-        let mut solver = ParallelSolver::with_tt(
-            initial_board.clone(),
+        let mut solver = Self::with_tt(
+            initial_board,
             board_size,
             win_len,
             Some(depth),
@@ -123,7 +127,7 @@ impl ParallelSolver {
 
         loop {
             if verbose {
-                println!("尝试搜索深度 D={}", depth);
+                println!("尝试搜索深度 D={depth}");
             }
 
             let found = solver.solve(verbose);
@@ -145,10 +149,12 @@ impl ParallelSolver {
         }
     }
 
+    #[must_use] 
     pub fn get_tt(&self) -> TranspositionTable {
         self.tree.get_tt()
     }
 
+    #[must_use] 
     pub fn get_best_move(&self) -> Option<(usize, usize)> {
         let root = &self.tree.root;
 
@@ -172,45 +178,52 @@ impl ParallelSolver {
             })
             .collect();
 
-        if !winning_children.is_empty() {
-            winning_children
-                .iter()
-                .min_by_key(|c| (c.node.get_win_len(), c.mov))
-                .map(|c| c.mov)
-        } else {
+        if winning_children.is_empty() {
             children
                 .iter()
                 .filter(|c| c.node.get_pn() == 0)
                 .min_by_key(|c| (c.node.get_win_len(), c.mov))
                 .map(|c| c.mov)
+        } else {
+            winning_children
+                .iter()
+                .min_by_key(|c| (c.node.get_win_len(), c.mov))
+                .map(|c| c.mov)
         }
     }
 
+    #[must_use] 
     pub fn root_pn(&self) -> u64 {
         self.tree.root.get_pn()
     }
 
+    #[must_use] 
     pub fn root_dn(&self) -> u64 {
         self.tree.root.get_dn()
     }
 
+    #[must_use] 
     pub fn root_player(&self) -> u8 {
         self.tree.root.player
     }
 
+    #[must_use] 
     pub fn root_win_len(&self) -> u64 {
         self.tree.root.get_win_len()
     }
 
-    pub fn game_state(&self) -> &GomokuGameState {
+    #[must_use] 
+    pub const fn game_state(&self) -> &GomokuGameState {
         &self.base_game_state
     }
 
-    pub fn board_size(&self) -> usize {
+    #[must_use] 
+    pub const fn board_size(&self) -> usize {
         self.board_size
     }
 
-    pub fn win_len(&self) -> usize {
+    #[must_use] 
+    pub const fn win_len(&self) -> usize {
         self.win_len
     }
 }
@@ -218,7 +231,7 @@ impl ParallelSolver {
 impl Clone for GomokuGameState {
     fn clone(&self) -> Self {
         let hasher = Arc::clone(&self.hasher);
-        let mut state = GomokuGameState::new(self.board.clone(), hasher, 1, self.win_len);
+        let mut state = Self::new(self.board.clone(), hasher, 1, self.win_len);
 
         state.hashes = self.hashes;
 

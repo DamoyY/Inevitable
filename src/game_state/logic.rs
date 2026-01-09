@@ -49,6 +49,7 @@ impl GomokuGameState {
         }
     }
 
+    #[must_use] 
     pub fn find_forcing_moves(&self, player: u8) -> ForcingMoves {
         let opponent = 3 - player;
         let mut win_in_one_moves = HashSet::new();
@@ -73,6 +74,7 @@ impl GomokuGameState {
         )
     }
 
+    #[must_use] 
     pub fn get_legal_moves(&self, player: u8) -> Vec<Coord> {
         let (win_moves, threat_moves) = self.find_forcing_moves(player);
 

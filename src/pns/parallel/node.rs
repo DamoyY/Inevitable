@@ -26,7 +26,8 @@ pub struct ParallelNode {
 }
 
 impl ParallelNode {
-    pub fn new(
+    #[must_use] 
+    pub const fn new(
         player: u8,
         depth: usize,
         hash: u64,
@@ -48,7 +49,7 @@ impl ParallelNode {
     }
 
     #[inline]
-    pub fn is_or_node(&self) -> bool {
+    pub const fn is_or_node(&self) -> bool {
         self.player == 1
     }
 

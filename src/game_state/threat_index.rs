@@ -37,6 +37,7 @@ pub struct ThreatIndex {
 }
 
 impl ThreatIndex {
+    #[must_use] 
     pub fn new(board_size: usize, win_len: usize) -> Self {
         let mut threat_index = Self {
             board_size,
@@ -196,6 +197,7 @@ impl ThreatIndex {
         }
     }
 
+    #[must_use] 
     pub fn get_pattern_windows(
         &self,
         player: u8,

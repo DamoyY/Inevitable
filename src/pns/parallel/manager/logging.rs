@@ -149,34 +149,11 @@ pub(super) fn spawn_logger(
             };
 
             println!(
-                "迭代: {}, 扩展: {}, 根节点 PN/DN: {}/{}, TT大小: {}, TT命中率: {:.1}%, TT写入: \
-                 {}, 复用表大小: {}, 复用命中率: {:.1}%, 复用节点: {}, 新建节点: {}, 速度: {:.0} \
-                 iter/s, 扩展: {:.0}/s, 平均分支: {:.2}, 走子生成: {:.3} us, 落子/撤销: {:.3} us, \
-                 哈希: {:.3} us, 复用表: {:.3} us, 评估: {:.3} us, 其他: {:.3} us, 评估均耗时: \
-                 {:.3} us, 深度截断: {}, 提前剪枝: {}",
-                iterations,
-                expansions,
-                root_pn,
-                root_dn,
-                tt_size,
-                tt_hit_rate,
-                tt_stores,
-                node_table_size,
-                node_table_hit_rate,
-                delta_node_table_hits,
-                delta_nodes_created,
-                ips,
-                eps,
-                avg_branch,
-                avg_movegen_us,
-                avg_move_apply_us,
-                avg_hash_us,
-                avg_node_table_us,
-                avg_eval_us_per_expand,
-                avg_expand_other_us,
-                avg_eval_us,
-                depth_cutoffs,
-                early_cutoffs
+                "迭代: {iterations}, 扩展: {expansions}, 根节点 PN/DN: {root_pn}/{root_dn}, TT大小: {tt_size}, TT命中率: {tt_hit_rate:.1}%, TT写入: \
+                 {tt_stores}, 复用表大小: {node_table_size}, 复用命中率: {node_table_hit_rate:.1}%, 复用节点: {delta_node_table_hits}, 新建节点: {delta_nodes_created}, 速度: {ips:.0} \
+                 iter/s, 扩展: {eps:.0}/s, 平均分支: {avg_branch:.2}, 走子生成: {avg_movegen_us:.3} us, 落子/撤销: {avg_move_apply_us:.3} us, \
+                 哈希: {avg_hash_us:.3} us, 复用表: {avg_node_table_us:.3} us, 评估: {avg_eval_us_per_expand:.3} us, 其他: {avg_expand_other_us:.3} us, 评估均耗时: \
+                 {avg_eval_us:.3} us, 深度截断: {depth_cutoffs}, 提前剪枝: {early_cutoffs}"
             );
 
             last_iterations = iterations;

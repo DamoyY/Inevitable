@@ -11,6 +11,11 @@ parking_lot = "*"
 serde = { version = "*", features = ["derive"] }
 serde_yaml = "*"
 
+[lints.clippy]
+pedantic = "warn"
+nursery = "warn"
+cargo = "warn"
+
 [profile.dev]
 opt-level = 1
 

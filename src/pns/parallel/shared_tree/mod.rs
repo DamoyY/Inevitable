@@ -42,6 +42,7 @@ pub struct SharedTree {
 }
 
 impl SharedTree {
+    #[must_use] 
     pub fn new(
         root_player: u8,
         root_hash: u64,
@@ -51,6 +52,7 @@ impl SharedTree {
         Self::with_tt(root_player, root_hash, root_pos_hash, depth_limit, None)
     }
 
+    #[must_use] 
     pub fn with_tt(
         root_player: u8,
         root_hash: u64,

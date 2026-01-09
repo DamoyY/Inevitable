@@ -30,6 +30,7 @@ pub struct GomokuGameState {
 }
 
 impl GomokuGameState {
+    #[must_use] 
     pub fn new(
         initial_board: Vec<Vec<u8>>,
         hasher: Arc<ZobristHasher>,
@@ -93,14 +94,17 @@ impl GomokuGameState {
         }
     }
 
+    #[must_use] 
     pub fn get_canonical_hash(&self) -> u64 {
         *self.hashes.iter().min().unwrap()
     }
 
-    pub fn get_hash(&self) -> u64 {
+    #[must_use] 
+    pub const fn get_hash(&self) -> u64 {
         self.hashes[0]
     }
 
+    #[must_use] 
     pub fn check_win(&self, player: u8) -> bool {
         !self
             .threat_index

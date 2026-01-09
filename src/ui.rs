@@ -9,18 +9,18 @@ pub fn print_board(board: &[Vec<u8>]) {
     let board_size = board.len();
     print!("  ");
     for i in 0..board_size {
-        print!("{:2} ", i);
+        print!("{i:2} ");
     }
     println!();
     for (i, row) in board.iter().enumerate() {
-        print!("{:2} ", i);
+        print!("{i:2} ");
         for &cell in row {
             let c = match cell {
                 1 => "X",
                 2 => "O",
                 _ => ".",
             };
-            print!("{}  ", c);
+            print!("{c}  ");
         }
         println!();
     }
@@ -34,10 +34,9 @@ pub fn play_game() {
     let log_interval_ms = config.log_interval_ms;
 
     println!(
-        "棋盘大小: {}x{}, 获胜条件: {}子连珠",
-        board_size, board_size, win_len
+        "棋盘大小: {board_size}x{board_size}, 获胜条件: {win_len}子连珠"
     );
-    println!("使用 {} 个线程进行并行搜索", num_threads);
+    println!("使用 {num_threads} 个线程进行并行搜索");
     println!("程序执黑 (X)先手，您执白 (O)后手。");
 
     let mut board = vec![vec![0u8; board_size]; board_size];
@@ -70,7 +69,7 @@ pub fn play_game() {
                 tt = Some(new_tt);
                 best_move.unwrap()
             };
-            println!("程序选择落子于: {:?}", mov);
+            println!("程序选择落子于: {mov:?}");
             board[mov.0][mov.1] = 1;
 
             let solver = ParallelSolver::new(

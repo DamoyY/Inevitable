@@ -35,7 +35,7 @@ impl SharedTree {
             let mut min_pn = u64::MAX;
             let mut sum_dn = 0u64;
             let mut min_proven_win_len = u64::MAX;
-            for child in children.iter() {
+            for child in children {
                 let cpn = child.node.get_pn();
                 let cdn = child.node.get_dn();
                 let cwl = child.node.get_win_len();
@@ -59,7 +59,7 @@ impl SharedTree {
             let mut min_dn = u64::MAX;
             let mut all_proven = true;
             let mut max_win_len = 0u64;
-            for child in children.iter() {
+            for child in children {
                 let cpn = child.node.get_pn();
                 let cdn = child.node.get_dn();
                 let cwl = child.node.get_win_len();

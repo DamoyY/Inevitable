@@ -12,7 +12,8 @@ pub struct PNSNode {
     pub hash: u64,
 }
 impl PNSNode {
-    pub fn new(
+    #[must_use] 
+    pub const fn new(
         player: u8,
         parent: Option<usize>,
         mov: Option<(usize, usize)>,
@@ -33,7 +34,8 @@ impl PNSNode {
         }
     }
 
-    pub fn is_or_node(&self) -> bool {
+    #[must_use] 
+    pub const fn is_or_node(&self) -> bool {
         self.player == 1
     }
 }

@@ -11,7 +11,7 @@ pub struct Worker {
 }
 
 impl Worker {
-    pub fn new(tree: Arc<SharedTree>, ctx: ThreadLocalContext) -> Self {
+    pub const fn new(tree: Arc<SharedTree>, ctx: ThreadLocalContext) -> Self {
         Self { tree, ctx }
     }
 

@@ -7,6 +7,7 @@ pub struct Bitboard {
     num_words: usize,
 }
 impl Bitboard {
+    #[must_use] 
     pub fn new(board_size: usize) -> Self {
         let total_bits = board_size * board_size;
         let num_words = total_bits.div_ceil(64);
@@ -19,7 +20,7 @@ impl Bitboard {
     }
 
     #[inline]
-    fn coord_to_index(&self, r: usize, c: usize) -> (usize, usize) {
+    const fn coord_to_index(&self, r: usize, c: usize) -> (usize, usize) {
         let bit_pos = r * self.size + c;
         (bit_pos / 64, bit_pos % 64)
     }
@@ -44,6 +45,7 @@ impl Bitboard {
     }
 
     #[inline]
+    #[must_use] 
     pub fn occupied(&self) -> Vec<u64> {
         self.black
             .iter()
@@ -53,7 +55,7 @@ impl Bitboard {
     }
 
     #[inline]
-    fn last_word_mask(&self) -> u64 {
+    const fn last_word_mask(&self) -> u64 {
         let total_bits = self.size * self.size;
         let bits_in_last = total_bits % 64;
         if bits_in_last == 0 {
@@ -64,6 +66,7 @@ impl Bitboard {
     }
 
     #[inline]
+    #[must_use] 
     pub fn empty(&self) -> Vec<u64> {
         let occupied = self.occupied();
         let mut result: Vec<u64> = occupied.iter().map(|o| !o).collect();
@@ -73,6 +76,7 @@ impl Bitboard {
         result
     }
 
+    #[must_use] 
     pub fn is_all_zeros(bits: &[u64]) -> bool {
         bits.iter().all(|&w| w == 0)
     }
@@ -127,6 +131,7 @@ impl Bitboard {
         }
     }
 
+    #[must_use] 
     pub fn dilate(&self, bb: &[u64]) -> Vec<u64> {
         let size = self.size;
         let left_mask = self.col_mask(0);
@@ -154,6 +159,7 @@ impl Bitboard {
         result
     }
 
+    #[must_use] 
     pub fn neighbors(&self, bb: &[u64]) -> Vec<u64> {
         let dilated = self.dilate(bb);
         self.bitwise_and_not(&dilated, bb)
@@ -170,6 +176,7 @@ impl Bitboard {
         result
     }
 
+    #[must_use] 
     pub fn iter_bits(&self, bb: &[u64]) -> BitIterator {
         BitIterator {
             bits: bb.to_vec(),
@@ -179,6 +186,7 @@ impl Bitboard {
         }
     }
 
+    #[must_use] 
     pub fn from_board(board: &[Vec<u8>]) -> Self {
         let size = board.len();
         let mut bb = Self::new(size);

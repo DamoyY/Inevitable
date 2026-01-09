@@ -4,6 +4,7 @@ use super::{ParallelSolver, logging::spawn_logger};
 use crate::pns::parallel::{context::ThreadLocalContext, worker::Worker};
 
 impl ParallelSolver {
+    #[must_use] 
     pub fn solve(&self, verbose: bool) -> bool {
         let start_time = Instant::now();
         let tree = Arc::clone(&self.tree);
