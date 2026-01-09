@@ -24,11 +24,9 @@ impl Worker {
             }
             self.tree.increment_iterations();
             self.one_iteration();
-
             let root = &self.tree.root;
             let pn = root.get_pn();
             let dn = root.get_dn();
-
             if pn == 0 || dn == 0 {
                 self.tree.mark_solved();
                 break;
@@ -39,13 +37,11 @@ impl Worker {
     fn one_iteration(&mut self) {
         self.ctx.clear_path();
         let root = Arc::clone(&self.tree.root);
-
         let leaf = self.select(root);
         if self.tree.is_solved() {
             self.backpropagate();
             return;
         }
-
         if let Some(leaf_node) = leaf
             && !leaf_node.is_terminal()
             && !leaf_node.is_expanded()
@@ -59,16 +55,13 @@ impl Worker {
 
     fn select(&mut self, start: NodeRef) -> Option<NodeRef> {
         let mut current = start;
-
         loop {
             if self.tree.is_solved() {
                 return None;
             }
-
             if current.is_terminal() {
                 return Some(current);
             }
-
             if !current.is_expanded() {
                 return Some(current);
             }

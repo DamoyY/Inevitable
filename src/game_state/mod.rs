@@ -1,19 +1,15 @@
 use std::{collections::HashSet, sync::Arc};
-
 mod bitboard;
 mod evaluation;
 mod logic;
 mod threat_index;
 mod zobrist;
-
 pub use bitboard::Bitboard;
 pub use threat_index::ThreatIndex;
 pub use zobrist::ZobristHasher;
-
 pub type Coord = (usize, usize);
 pub type MoveHistory = Vec<(Coord, HashSet<Coord>)>;
 pub type ForcingMoves = (Vec<Coord>, Vec<Coord>);
-
 pub struct GomokuGameState {
     pub board: Vec<Vec<u8>>,
     pub bitboard: Bitboard,
@@ -30,6 +26,12 @@ pub struct GomokuGameState {
 }
 
 impl GomokuGameState {
+    fn neighbor_coords(&self) -> Vec<Coord> {
+        let occupied = self.bitboard.occupied();
+        let neighbors = self.bitboard.neighbors(&occupied);
+        self.bitboard.iter_bits(&neighbors).collect()
+    }
+
     #[must_use]
     pub fn new(
         initial_board: Vec<Vec<u8>>,
@@ -70,8 +72,7 @@ impl GomokuGameState {
             self.candidate_moves.insert((center, center));
             return;
         }
-        let neighbors = self.bitboard.neighbors(&occupied);
-        for coord in self.bitboard.iter_bits(&neighbors) {
+        for coord in self.neighbor_coords() {
             self.candidate_moves.insert(coord);
         }
     }
@@ -105,7 +106,6 @@ impl GomokuGameState {
                 }
             }
         }
-
         let base_hash = hashes[0];
         let side_hash = self.hasher.side_to_move_hash;
         let side_to_move_is_player2 = if self.hash == base_hash {
@@ -126,13 +126,11 @@ impl GomokuGameState {
             }
             count1 > count2
         };
-
         if side_to_move_is_player2 {
             for hash in &mut hashes {
                 *hash ^= side_hash;
             }
         }
-
         hashes.iter().copied().min().unwrap_or(0)
     }
 

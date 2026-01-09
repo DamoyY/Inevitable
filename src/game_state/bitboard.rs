@@ -7,7 +7,7 @@ pub struct Bitboard {
     num_words: usize,
 }
 impl Bitboard {
-    #[must_use] 
+    #[must_use]
     pub fn new(board_size: usize) -> Self {
         let total_bits = board_size * board_size;
         let num_words = total_bits.div_ceil(64);
@@ -45,7 +45,7 @@ impl Bitboard {
     }
 
     #[inline]
-    #[must_use] 
+    #[must_use]
     pub fn occupied(&self) -> Vec<u64> {
         self.black
             .iter()
@@ -66,7 +66,7 @@ impl Bitboard {
     }
 
     #[inline]
-    #[must_use] 
+    #[must_use]
     pub fn empty(&self) -> Vec<u64> {
         let occupied = self.occupied();
         let mut result: Vec<u64> = occupied.iter().map(|o| !o).collect();
@@ -76,45 +76,45 @@ impl Bitboard {
         result
     }
 
-    #[must_use] 
+    #[must_use]
     pub fn is_all_zeros(bits: &[u64]) -> bool {
         bits.iter().all(|&w| w == 0)
     }
 
-    fn shift_left(&self, bits: &[u64], n: usize) -> Vec<u64> {
+    fn shift(&self, bits: &[u64], n: usize, left: bool) -> Vec<u64> {
         if n == 0 {
             return bits.to_vec();
         }
         let word_shift = n / 64;
         let bit_shift = n % 64;
         let mut result = vec![0u64; self.num_words];
-
-        for (i, result_word) in result.iter_mut().enumerate().skip(word_shift) {
-            let src = i - word_shift;
-            *result_word = bits[src] << bit_shift;
-            if bit_shift > 0 && src > 0 {
-                *result_word |= bits[src - 1] >> (64 - bit_shift);
+        if left {
+            for (i, result_word) in result.iter_mut().enumerate().skip(word_shift) {
+                let src = i - word_shift;
+                *result_word = bits[src] << bit_shift;
+                if bit_shift > 0 && src > 0 {
+                    *result_word |= bits[src - 1] >> (64 - bit_shift);
+                }
+            }
+        } else {
+            let count = self.num_words.saturating_sub(word_shift);
+            for (i, result_word) in result.iter_mut().enumerate().take(count) {
+                let src = i + word_shift;
+                *result_word = bits[src] >> bit_shift;
+                if bit_shift > 0 && src + 1 < self.num_words {
+                    *result_word |= bits[src + 1] << (64 - bit_shift);
+                }
             }
         }
         result
     }
 
+    fn shift_left(&self, bits: &[u64], n: usize) -> Vec<u64> {
+        self.shift(bits, n, true)
+    }
+
     fn shift_right(&self, bits: &[u64], n: usize) -> Vec<u64> {
-        if n == 0 {
-            return bits.to_vec();
-        }
-        let word_shift = n / 64;
-        let bit_shift = n % 64;
-        let mut result = vec![0u64; self.num_words];
-        let count = self.num_words.saturating_sub(word_shift);
-        for (i, result_word) in result.iter_mut().enumerate().take(count) {
-            let src = i + word_shift;
-            *result_word = bits[src] >> bit_shift;
-            if bit_shift > 0 && src + 1 < self.num_words {
-                *result_word |= bits[src + 1] << (64 - bit_shift);
-            }
-        }
-        result
+        self.shift(bits, n, false)
     }
 
     fn bitwise_or(a: &[u64], b: &[u64]) -> Vec<u64> {
@@ -131,7 +131,7 @@ impl Bitboard {
         }
     }
 
-    #[must_use] 
+    #[must_use]
     pub fn dilate(&self, bb: &[u64]) -> Vec<u64> {
         let size = self.size;
         let left_mask = self.col_mask(0);
@@ -159,7 +159,7 @@ impl Bitboard {
         result
     }
 
-    #[must_use] 
+    #[must_use]
     pub fn neighbors(&self, bb: &[u64]) -> Vec<u64> {
         let dilated = self.dilate(bb);
         Self::bitwise_and_not(&dilated, bb)
@@ -176,7 +176,7 @@ impl Bitboard {
         result
     }
 
-    #[must_use] 
+    #[must_use]
     pub fn iter_bits(&self, bb: &[u64]) -> BitIterator {
         BitIterator {
             bits: bb.to_vec(),
@@ -186,7 +186,7 @@ impl Bitboard {
         }
     }
 
-    #[must_use] 
+    #[must_use]
     pub fn from_board(board: &[Vec<u8>]) -> Self {
         let size = board.len();
         let mut bb = Self::new(size);

@@ -5,10 +5,9 @@ use super::{
     shared_tree::{SharedTree, TranspositionTable},
 };
 use crate::game_state::{GomokuGameState, ZobristHasher};
-
 mod logging;
+mod metrics;
 mod solve;
-
 pub struct ParallelSolver {
     pub tree: Arc<SharedTree>,
     pub base_game_state: GomokuGameState,
@@ -127,14 +126,11 @@ impl ParallelSolver {
             log_interval_ms,
             existing_tt,
         );
-
         loop {
             if verbose {
                 println!("尝试搜索深度 D={depth}");
             }
-
             let found = solver.solve(verbose);
-
             if found {
                 let best_move = solver.get_best_move();
                 if verbose {
@@ -146,7 +142,6 @@ impl ParallelSolver {
                 }
                 return (best_move, solver.get_tt());
             }
-
             depth += 1;
             solver.increase_depth_limit(depth);
         }
@@ -160,7 +155,6 @@ impl ParallelSolver {
     #[must_use]
     pub fn get_best_move(&self) -> Option<(usize, usize)> {
         let root = &self.tree.root;
-
         if root.get_pn() != 0 {
             return None;
         }
@@ -171,16 +165,13 @@ impl ParallelSolver {
         if children.is_empty() {
             return None;
         }
-
         let root_win_len = root.get_win_len();
-
         let winning_children: Vec<_> = children
             .iter()
             .filter(|c| {
                 c.node.get_pn() == 0 && 1u64.saturating_add(c.node.get_win_len()) == root_win_len
             })
             .collect();
-
         if winning_children.is_empty() {
             children
                 .iter()
@@ -230,14 +221,11 @@ impl ParallelSolver {
         self.win_len
     }
 }
-
 impl Clone for GomokuGameState {
     fn clone(&self) -> Self {
         let hasher = Arc::clone(&self.hasher);
         let mut state = Self::new(self.board.clone(), hasher, 1, self.win_len);
-
         state.hash = self.hash;
-
         state
     }
 }

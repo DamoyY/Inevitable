@@ -2,7 +2,6 @@ use std::{
     collections::{HashMap, HashSet},
     sync::LazyLock,
 };
-
 #[derive(Clone)]
 pub struct Window {
     pub coords: Vec<(usize, usize)>,
@@ -11,7 +10,6 @@ pub struct Window {
     pub empty_count: usize,
     pub empty_cells: HashSet<(usize, usize)>,
 }
-
 impl Window {
     pub fn new(coords: Vec<(usize, usize)>) -> Self {
         let empty_cells: HashSet<(usize, usize)> = coords.iter().copied().collect();
@@ -25,7 +23,6 @@ impl Window {
         }
     }
 }
-
 static EMPTY_SET: LazyLock<HashSet<usize>> = LazyLock::new(HashSet::new);
 
 pub struct ThreatIndex {
@@ -37,7 +34,7 @@ pub struct ThreatIndex {
 }
 
 impl ThreatIndex {
-    #[must_use] 
+    #[must_use]
     pub fn new(board_size: usize, win_len: usize) -> Self {
         let mut threat_index = Self {
             board_size,
@@ -51,29 +48,39 @@ impl ThreatIndex {
     }
 
     fn enumerate_windows(&mut self) {
-        for r in 0..self.board_size {
-            for c in 0..=self.board_size - self.win_len {
-                let coords: Vec<(usize, usize)> = (0..self.win_len).map(|i| (r, c + i)).collect();
-                self.add_window(coords);
-            }
-        }
-        for r in 0..=self.board_size - self.win_len {
-            for c in 0..self.board_size {
-                let coords: Vec<(usize, usize)> = (0..self.win_len).map(|i| (r + i, c)).collect();
-                self.add_window(coords);
-            }
-        }
-        for r in 0..=self.board_size - self.win_len {
-            for c in 0..=self.board_size - self.win_len {
+        self.add_direction_windows(
+            0..self.board_size,
+            0..=self.board_size - self.win_len,
+            &|r, c, i| (r, c + i),
+        );
+        self.add_direction_windows(
+            0..=self.board_size - self.win_len,
+            0..self.board_size,
+            &|r, c, i| (r + i, c),
+        );
+        self.add_direction_windows(
+            0..=self.board_size - self.win_len,
+            0..=self.board_size - self.win_len,
+            &|r, c, i| (r + i, c + i),
+        );
+        self.add_direction_windows(
+            0..=self.board_size - self.win_len,
+            (self.win_len - 1)..self.board_size,
+            &|r, c, i| (r + i, c - i),
+        );
+    }
+
+    fn add_direction_windows<RI, CI, F>(&mut self, rows: RI, cols: CI, coord_fn: &F)
+    where
+        RI: Iterator<Item = usize>,
+        CI: Iterator<Item = usize>,
+        F: Fn(usize, usize, usize) -> (usize, usize),
+    {
+        let cols: Vec<usize> = cols.collect();
+        for r in rows {
+            for &c in &cols {
                 let coords: Vec<(usize, usize)> =
-                    (0..self.win_len).map(|i| (r + i, c + i)).collect();
-                self.add_window(coords);
-            }
-        }
-        for r in 0..=self.board_size - self.win_len {
-            for c in (self.win_len - 1)..self.board_size {
-                let coords: Vec<(usize, usize)> =
-                    (0..self.win_len).map(|i| (r + i, c - i)).collect();
+                    (0..self.win_len).map(|i| coord_fn(r, c, i)).collect();
                 self.add_window(coords);
             }
         }
@@ -123,81 +130,81 @@ impl ThreatIndex {
         }
     }
 
+    const fn window_bucket_keys(window: &Window) -> [(u8, usize, usize); 2] {
+        [
+            (1, window.p1_count, window.p2_count),
+            (2, window.p2_count, window.p1_count),
+        ]
+    }
+
     fn update_bucket_add(&mut self, window_idx: usize) {
         let window = &self.all_windows[window_idx];
-        let key1 = (1, window.p1_count, window.p2_count);
-        let key2 = (2, window.p2_count, window.p1_count);
+        let keys = Self::window_bucket_keys(window);
 
         self.pattern_buckets
-            .entry(key1)
+            .entry(keys[0])
             .or_default()
             .insert(window_idx);
         self.pattern_buckets
-            .entry(key2)
+            .entry(keys[1])
             .or_default()
             .insert(window_idx);
     }
 
     fn update_bucket_remove(&mut self, window_idx: usize) {
         let window = &self.all_windows[window_idx];
-        let key1 = (1, window.p1_count, window.p2_count);
-        let key2 = (2, window.p2_count, window.p1_count);
-
-        if let Some(set) = self.pattern_buckets.get_mut(&key1) {
+        let keys = Self::window_bucket_keys(window);
+        if let Some(set) = self.pattern_buckets.get_mut(&keys[0]) {
             set.remove(&window_idx);
         }
-        if let Some(set) = self.pattern_buckets.get_mut(&key2) {
+        if let Some(set) = self.pattern_buckets.get_mut(&keys[1]) {
             set.remove(&window_idx);
+        }
+    }
+
+    fn apply_window_update(&mut self, mov: (usize, usize), player: u8, is_move: bool) {
+        let window_indices: Vec<usize> = self
+            .point_to_windows_map
+            .get(&mov)
+            .cloned()
+            .unwrap_or_default();
+        for window_idx in window_indices {
+            self.update_bucket_remove(window_idx);
+
+            let window = &mut self.all_windows[window_idx];
+            if is_move {
+                window.empty_count -= 1;
+                window.empty_cells.remove(&mov);
+            } else {
+                window.empty_count += 1;
+                window.empty_cells.insert(mov);
+            }
+            if player == 1 {
+                if is_move {
+                    window.p1_count += 1;
+                } else {
+                    window.p1_count -= 1;
+                }
+            } else {
+                if is_move {
+                    window.p2_count += 1;
+                } else {
+                    window.p2_count -= 1;
+                }
+            }
+            self.update_bucket_add(window_idx);
         }
     }
 
     pub fn update_on_move(&mut self, mov: (usize, usize), player: u8) {
-        let window_indices: Vec<usize> = self
-            .point_to_windows_map
-            .get(&mov)
-            .cloned()
-            .unwrap_or_default();
-
-        for window_idx in window_indices {
-            self.update_bucket_remove(window_idx);
-
-            let window = &mut self.all_windows[window_idx];
-            window.empty_count -= 1;
-            window.empty_cells.remove(&mov);
-            if player == 1 {
-                window.p1_count += 1;
-            } else {
-                window.p2_count += 1;
-            }
-
-            self.update_bucket_add(window_idx);
-        }
+        self.apply_window_update(mov, player, true);
     }
 
     pub fn update_on_undo(&mut self, mov: (usize, usize), player: u8) {
-        let window_indices: Vec<usize> = self
-            .point_to_windows_map
-            .get(&mov)
-            .cloned()
-            .unwrap_or_default();
-
-        for window_idx in window_indices {
-            self.update_bucket_remove(window_idx);
-
-            let window = &mut self.all_windows[window_idx];
-            window.empty_count += 1;
-            window.empty_cells.insert(mov);
-            if player == 1 {
-                window.p1_count -= 1;
-            } else {
-                window.p2_count -= 1;
-            }
-
-            self.update_bucket_add(window_idx);
-        }
+        self.apply_window_update(mov, player, false);
     }
 
-    #[must_use] 
+    #[must_use]
     pub fn get_pattern_windows(
         &self,
         player: u8,

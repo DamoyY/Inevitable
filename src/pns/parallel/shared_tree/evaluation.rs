@@ -38,12 +38,10 @@ impl SharedTree {
             }
         }
         if p1_wins {
-            node.set_pn(0);
-            node.set_dn(u64::MAX);
+            node.set_proven();
             node.set_win_len(0);
         } else if p2_wins {
-            node.set_pn(u64::MAX);
-            node.set_dn(0);
+            node.set_disproven();
         } else if let Some(limit) = self.depth_limit
             && node.depth >= limit
         {

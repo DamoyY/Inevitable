@@ -8,6 +8,7 @@ rand = "*"
 parking_lot = "*"
 serde = { version = "*", features = ["derive"] }
 serde_yaml = "*"
+ctrlc = "*"
 
 [lints.clippy]
 pedantic = "warn"

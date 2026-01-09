@@ -2,6 +2,24 @@ use std::collections::HashSet;
 
 use super::{Bitboard, Coord, ForcingMoves, GomokuGameState};
 impl GomokuGameState {
+    fn collect_empty_cells<'a, I>(&self, window_indices: I) -> HashSet<Coord>
+    where
+        I: IntoIterator<Item = &'a usize>,
+    {
+        let mut cells = HashSet::new();
+        for &window_idx in window_indices {
+            let window = &self.threat_index.all_windows[window_idx];
+            cells.extend(window.empty_cells.iter());
+        }
+        cells
+    }
+
+    fn score_and_sort_moves(&self, player: u8, moves: &[Coord]) -> Vec<Coord> {
+        let mut scored_moves = self.score_moves(player, moves);
+        scored_moves.sort_by(|a, b| b.1.total_cmp(&a.1));
+        scored_moves.into_iter().map(|(coord, _)| coord).collect()
+    }
+
     pub fn make_move(&mut self, mov: Coord, player: u8) {
         let (r, c) = mov;
         self.board[r][c] = player;
@@ -9,9 +27,7 @@ impl GomokuGameState {
         self.threat_index.update_on_move(mov, player);
         let mut newly_added_candidates = HashSet::new();
         self.candidate_moves.remove(&mov);
-        let occupied = self.bitboard.occupied();
-        let all_neighbors = self.bitboard.neighbors(&occupied);
-        for coord in self.bitboard.iter_bits(&all_neighbors) {
+        for coord in self.neighbor_coords() {
             if self.candidate_moves.insert(coord) {
                 newly_added_candidates.insert(coord);
             }
@@ -43,22 +59,14 @@ impl GomokuGameState {
     #[must_use]
     pub fn find_forcing_moves(&self, player: u8) -> ForcingMoves {
         let opponent = 3 - player;
-        let mut win_in_one_moves = HashSet::new();
-        let mut threat_moves = HashSet::new();
         let win_windows = self
             .threat_index
             .get_pattern_windows(player, self.win_len - 1, 0);
-        for &window_idx in win_windows {
-            let window = &self.threat_index.all_windows[window_idx];
-            win_in_one_moves.extend(window.empty_cells.iter());
-        }
+        let win_in_one_moves = self.collect_empty_cells(win_windows);
         let threat_windows = self
             .threat_index
             .get_pattern_windows(opponent, self.win_len - 1, 0);
-        for &window_idx in threat_windows {
-            let window = &self.threat_index.all_windows[window_idx];
-            threat_moves.extend(window.empty_cells.iter());
-        }
+        let threat_moves = self.collect_empty_cells(threat_windows);
         (
             win_in_one_moves.into_iter().collect(),
             threat_moves.into_iter().collect(),
@@ -73,19 +81,13 @@ impl GomokuGameState {
             return win_moves;
         }
         if !threat_moves.is_empty() {
-            let scores = self.score_moves(player, &threat_moves);
-            let mut scored_moves: Vec<(Coord, f32)> = scores;
-            scored_moves.sort_by(|a, b| b.1.total_cmp(&a.1));
-            return scored_moves.into_iter().map(|(coord, _)| coord).collect();
+            return self.score_and_sort_moves(player, &threat_moves);
         }
         let empty_bits = self.bitboard.empty();
         if Bitboard::is_all_zeros(&empty_bits) {
             return Vec::new();
         }
         let empties: Vec<Coord> = self.bitboard.iter_bits(&empty_bits).collect();
-        let scores = self.score_moves(player, &empties);
-        let mut scored_moves: Vec<(Coord, f32)> = scores;
-        scored_moves.sort_by(|a, b| b.1.total_cmp(&a.1));
-        scored_moves.into_iter().map(|(coord, _)| coord).collect()
+        self.score_and_sort_moves(player, &empties)
     }
 }
