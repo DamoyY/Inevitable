@@ -6,4 +6,4 @@ mod worker;
 
 pub use manager::{ParallelSolver, SearchParams};
 pub use node::{NodeRef, ParallelNode};
-pub use shared_tree::{SharedTree, TranspositionTable};
+pub use shared_tree::{NodeTable, SharedTree, TranspositionTable};

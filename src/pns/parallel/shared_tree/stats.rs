@@ -1,6 +1,6 @@
 use std::sync::{Arc, atomic::Ordering};
 
-use super::{SharedTree, TranspositionTable};
+use super::{NodeTable, SharedTree, TranspositionTable};
 use crate::pns::TTEntry;
 
 impl SharedTree {
@@ -133,6 +133,10 @@ impl SharedTree {
 
     pub fn get_tt(&self) -> TranspositionTable {
         Arc::clone(&self.transposition_table)
+    }
+
+    pub fn get_node_table(&self) -> NodeTable {
+        Arc::clone(&self.node_table)
     }
 
     pub fn get_tt_size(&self) -> usize {

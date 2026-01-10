@@ -5,7 +5,7 @@ use std::sync::{
 
 use super::{
     context::ThreadLocalContext,
-    shared_tree::{SharedTree, TranspositionTable},
+    shared_tree::{NodeTable, SharedTree, TranspositionTable},
 };
 use crate::{alloc_stats, game_state::{GomokuGameState, ZobristHasher}};
 mod logging;
@@ -58,6 +58,7 @@ impl ParallelSolver {
             depth_limit,
             num_threads,
             None,
+            None,
         )
     }
 
@@ -69,6 +70,7 @@ impl ParallelSolver {
         depth_limit: Option<usize>,
         num_threads: usize,
         existing_tt: Option<TranspositionTable>,
+        existing_node_table: Option<NodeTable>,
     ) -> Self {
         Self::with_tt_and_stop(
             initial_board,
@@ -76,6 +78,7 @@ impl ParallelSolver {
             depth_limit,
             &Arc::new(AtomicBool::new(false)),
             existing_tt,
+            existing_node_table,
         )
     }
 
@@ -86,13 +89,15 @@ impl ParallelSolver {
         depth_limit: Option<usize>,
         stop_flag: &Arc<AtomicBool>,
         existing_tt: Option<TranspositionTable>,
+        existing_node_table: Option<NodeTable>,
     ) -> Self {
+        alloc_stats::reset_alloc_free_time_ns();
+        let _alloc_guard = alloc_stats::AllocTrackingGuard::new();
         let hasher = Arc::new(ZobristHasher::new(params.board_size));
         let game_state = GomokuGameState::new(initial_board, hasher, 1, params.win_len);
         let root_hash = game_state.get_canonical_hash();
         let root_pos_hash = game_state.get_hash();
 
-        alloc_stats::reset_alloc_free_time_ns();
         let tree = Arc::new(SharedTree::with_tt_and_stop(
             1,
             root_hash,
@@ -100,6 +105,7 @@ impl ParallelSolver {
             depth_limit,
             Arc::clone(stop_flag),
             existing_tt,
+            existing_node_table,
         ));
 
         tree.evaluate_node(&tree.root, &ThreadLocalContext::new(game_state.clone(), 0));
@@ -140,6 +146,7 @@ impl ParallelSolver {
             num_threads,
             verbose,
             None,
+            None,
         )
         .0
     }
@@ -152,13 +159,15 @@ impl ParallelSolver {
         num_threads: usize,
         verbose: bool,
         existing_tt: Option<TranspositionTable>,
-    ) -> (Option<(usize, usize)>, TranspositionTable) {
+        existing_node_table: Option<NodeTable>,
+    ) -> (Option<(usize, usize)>, TranspositionTable, NodeTable) {
         Self::find_best_move_with_tt_and_stop(
             initial_board,
             SearchParams::new(board_size, win_len, num_threads),
             verbose,
             &Arc::new(AtomicBool::new(false)),
             existing_tt,
+            existing_node_table,
         )
     }
 
@@ -169,20 +178,27 @@ impl ParallelSolver {
         verbose: bool,
         stop_flag: &Arc<AtomicBool>,
         existing_tt: Option<TranspositionTable>,
-    ) -> (Option<(usize, usize)>, TranspositionTable) {
+        existing_node_table: Option<NodeTable>,
+    ) -> (Option<(usize, usize)>, TranspositionTable, NodeTable) {
         let mut depth = 1usize;
-        let mut solver =
-            Self::with_tt_and_stop(initial_board, params, Some(depth), stop_flag, existing_tt);
+        let mut solver = Self::with_tt_and_stop(
+            initial_board,
+            params,
+            Some(depth),
+            stop_flag,
+            existing_tt,
+            existing_node_table,
+        );
         loop {
             if stop_flag.load(Ordering::Acquire) {
-                return (None, solver.get_tt());
+                return (None, solver.get_tt(), solver.get_node_table());
             }
             if verbose {
                 println!("尝试搜索深度 D={depth}", depth = format_sci_usize(depth));
             }
             let found = solver.solve(verbose);
             if stop_flag.load(Ordering::Acquire) || solver.tree.stop_requested() {
-                return (None, solver.get_tt());
+                return (None, solver.get_tt(), solver.get_node_table());
             }
             if found {
                 let best_move = solver.get_best_move();
@@ -194,11 +210,11 @@ impl ParallelSolver {
                     );
                     println!("在 {path_len} 步内找到路径，最佳首步: {best_move_display}");
                 }
-                return (best_move, solver.get_tt());
+                return (best_move, solver.get_tt(), solver.get_node_table());
             }
             depth += 1;
             if stop_flag.load(Ordering::Acquire) {
-                return (None, solver.get_tt());
+                return (None, solver.get_tt(), solver.get_node_table());
             }
             solver.increase_depth_limit(depth);
         }
@@ -207,6 +223,11 @@ impl ParallelSolver {
     #[must_use]
     pub fn get_tt(&self) -> TranspositionTable {
         self.tree.get_tt()
+    }
+
+    #[must_use]
+    pub fn get_node_table(&self) -> NodeTable {
+        self.tree.get_node_table()
     }
 
     #[must_use]

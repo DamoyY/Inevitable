@@ -1,4 +1,5 @@
 use std::{
+    collections::HashMap,
     io::{self, Write},
     sync::{
         Arc,
@@ -9,9 +10,11 @@ use std::{
     time::Duration,
 };
 
+use parking_lot::RwLock;
+
 use crate::{
     config::Config,
-    pns::{ParallelSolver, SearchParams, TranspositionTable},
+    pns::{NodeTable, ParallelSolver, SearchParams, TranspositionTable},
 };
 
 pub fn print_board(board: &[Vec<u8>]) {
@@ -41,6 +44,7 @@ pub fn play_game(exit_flag: &Arc<AtomicBool>) {
     let mut board = vec![vec![0u8; board_size]; board_size];
     let mut current_player = 1u8;
     let mut tt: Option<TranspositionTable> = None;
+    let mut node_table: NodeTable = Arc::new(RwLock::new(HashMap::new()));
     loop {
         if exit_flag.load(Ordering::SeqCst) {
             return;
@@ -51,7 +55,14 @@ pub fn play_game(exit_flag: &Arc<AtomicBool>) {
             print_board(&board);
         }
         if current_player == 1 {
-            if ai_turn(&mut board, &config, !has_stones, &mut tt, exit_flag) {
+            if ai_turn(
+                &mut board,
+                &config,
+                !has_stones,
+                &mut tt,
+                &mut node_table,
+                exit_flag,
+            ) {
                 break;
             }
             if exit_flag.load(Ordering::SeqCst) {
@@ -85,11 +96,13 @@ fn ai_turn(
     config: &Config,
     board_empty: bool,
     tt: &mut Option<TranspositionTable>,
+    node_table: &mut NodeTable,
     exit_flag: &Arc<AtomicBool>,
 ) -> bool {
     if exit_flag.load(Ordering::SeqCst) {
         return true;
     }
+    node_table.write().clear();
     let board_size = config.board_size;
     let win_len = config.win_len;
     let num_threads = config.num_threads;
@@ -100,14 +113,17 @@ fn ai_turn(
     } else {
         println!("程序正在思考...");
         let params = SearchParams::new(board_size, win_len, num_threads);
-        let (best_move, new_tt) = ParallelSolver::find_best_move_with_tt_and_stop(
+        let (best_move, new_tt, new_node_table) =
+            ParallelSolver::find_best_move_with_tt_and_stop(
             board.to_vec(),
             params,
             verbose,
             exit_flag,
             tt.take(),
+            Some(Arc::clone(node_table)),
         );
         *tt = Some(new_tt);
+        *node_table = new_node_table;
         if let Some(mov) = best_move {
             mov
         } else {
@@ -216,12 +232,6 @@ fn check_win(
     num_threads: usize,
     player: u8,
 ) -> bool {
-    let solver = ParallelSolver::new(
-        board.to_vec(),
-        board_size,
-        win_len,
-        Some(1),
-        num_threads,
-    );
+    let solver = ParallelSolver::new(board.to_vec(), board_size, win_len, Some(1), num_threads);
     solver.game_state().check_win(player)
 }

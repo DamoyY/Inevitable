@@ -1,16 +1,16 @@
 use std::{sync::Arc, thread, time::Instant};
 
-use super::{
-    ParallelSolver,
-    logging::write_csv_log,
-    metrics::format_sci_u64,
+use super::{ParallelSolver, logging::write_csv_log, metrics::format_sci_u64};
+use crate::{
+    alloc_stats::AllocTrackingGuard,
+    pns::parallel::{context::ThreadLocalContext, shared_tree::SharedTree, worker::Worker},
 };
-use crate::pns::parallel::{context::ThreadLocalContext, shared_tree::SharedTree, worker::Worker};
 
 impl ParallelSolver {
     #[must_use]
     pub fn solve(&self, verbose: bool) -> bool {
         let start_time = Instant::now();
+        let _alloc_guard = AllocTrackingGuard::new();
         let tree = Arc::clone(&self.tree);
         if tree.stop_requested() {
             return false;
@@ -43,15 +43,13 @@ impl ParallelSolver {
     fn spawn_workers(&self, tree: &Arc<SharedTree>) -> Vec<thread::JoinHandle<()>> {
         (0..self.num_threads)
             .map(|thread_id| {
-                thread::spawn({
-                    #[allow(unused_variables)]
-                    let tree = Arc::clone(tree);
-                    #[allow(unused_variables)]
-                    let ctx = ThreadLocalContext::new(self.clone_game_state(), thread_id);
-                    move || {
-                        let mut worker = Worker::new(tree, ctx);
-                        worker.run();
-                    }
+                let tree = Arc::clone(tree);
+                let game_state = self.clone_game_state();
+                thread::spawn(move || {
+                    let _alloc_guard = AllocTrackingGuard::new();
+                    let ctx = ThreadLocalContext::new(game_state, thread_id);
+                    let mut worker = Worker::new(tree, ctx);
+                    worker.run();
                 })
             })
             .collect()

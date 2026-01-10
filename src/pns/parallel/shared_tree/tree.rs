@@ -10,13 +10,14 @@ use parking_lot::RwLock;
 
 use super::{
     super::node::{ChildRef, NodeRef, ParallelNode},
+    NodeTable,
     TranspositionTable,
 };
 
 pub struct SharedTree {
     pub root: NodeRef,
     pub transposition_table: TranspositionTable,
-    pub node_table: RwLock<HashMap<(u64, usize), NodeRef>>,
+    pub node_table: NodeTable,
     pub depth_limit: Option<usize>,
     pub solved: AtomicBool,
     pub(super) stop_flag: Arc<AtomicBool>,
@@ -59,7 +60,14 @@ impl SharedTree {
         root_pos_hash: u64,
         depth_limit: Option<usize>,
     ) -> Self {
-        Self::with_tt(root_player, root_hash, root_pos_hash, depth_limit, None)
+        Self::with_tt(
+            root_player,
+            root_hash,
+            root_pos_hash,
+            depth_limit,
+            None,
+            None,
+        )
     }
 
     #[must_use]
@@ -69,6 +77,7 @@ impl SharedTree {
         root_pos_hash: u64,
         depth_limit: Option<usize>,
         existing_tt: Option<TranspositionTable>,
+        existing_node_table: Option<NodeTable>,
     ) -> Self {
         Self::with_tt_and_stop(
             root_player,
@@ -77,6 +86,7 @@ impl SharedTree {
             depth_limit,
             Arc::new(AtomicBool::new(false)),
             existing_tt,
+            existing_node_table,
         )
     }
 
@@ -88,16 +98,21 @@ impl SharedTree {
         depth_limit: Option<usize>,
         stop_flag: Arc<AtomicBool>,
         existing_tt: Option<TranspositionTable>,
+        existing_node_table: Option<NodeTable>,
     ) -> Self {
         let root = Arc::new(ParallelNode::new(root_player, 0, root_hash, false));
-        let mut node_table = HashMap::new();
-        node_table.insert((root_pos_hash, 0), Arc::clone(&root));
+        let node_table =
+            existing_node_table.unwrap_or_else(|| Arc::new(RwLock::new(HashMap::new())));
+        {
+            let mut node_table_guard = node_table.write();
+            node_table_guard.insert((root_pos_hash, 0), Arc::clone(&root));
+        }
         let transposition_table =
             existing_tt.unwrap_or_else(|| Arc::new(RwLock::new(HashMap::new())));
         Self {
             root,
             transposition_table,
-            node_table: RwLock::new(node_table),
+            node_table,
             depth_limit,
             solved: AtomicBool::new(false),
             stop_flag,

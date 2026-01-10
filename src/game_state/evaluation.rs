@@ -125,9 +125,7 @@ impl GomokuGameState {
         if player_idx < self.proximity_maps.len() {
             let proximity_map = &self.proximity_maps[player_idx];
             for (total_row, proximity_row) in total_scores.iter_mut().zip(proximity_map.iter()) {
-                for (total_cell, &proximity_val) in
-                    total_row.iter_mut().zip(proximity_row.iter())
-                {
+                for (total_cell, &proximity_val) in total_row.iter_mut().zip(proximity_row.iter()) {
                     *total_cell += proximity_val * self.proximity_scale;
                 }
             }

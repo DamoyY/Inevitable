@@ -7,4 +7,4 @@ pub struct TTEntry {
     pub win_len: u64,
 }
 
-pub use parallel::{ParallelSolver, SearchParams, TranspositionTable};
+pub use parallel::{NodeTable, ParallelSolver, SearchParams, TranspositionTable};

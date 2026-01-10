@@ -1,7 +1,9 @@
-use std::alloc::{GlobalAlloc, Layout};
-use std::cell::Cell;
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::{Duration, Instant};
+use std::{
+    alloc::{GlobalAlloc, Layout},
+    cell::Cell,
+    sync::atomic::{AtomicU64, Ordering},
+    time::{Duration, Instant},
+};
 
 use mimalloc::MiMalloc;
 
@@ -95,12 +97,7 @@ unsafe impl GlobalAlloc for TrackingAllocator {
         track_alloc_time(|| unsafe { self.inner.dealloc(ptr, layout) });
     }
 
-    unsafe fn realloc(
-        &self,
-        ptr: *mut u8,
-        layout: Layout,
-        new_size: usize,
-    ) -> *mut u8 {
+    unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
         track_alloc_time(|| unsafe { self.inner.realloc(ptr, layout, new_size) })
     }
 

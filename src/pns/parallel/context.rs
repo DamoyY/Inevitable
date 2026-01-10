@@ -28,11 +28,7 @@ impl ThreadLocalContext {
         self.game_state.make_move(mov, player);
     }
 
-    pub fn make_move_with_timing(
-        &mut self,
-        mov: (usize, usize),
-        player: u8,
-    ) -> MoveApplyTiming {
+    pub fn make_move_with_timing(&mut self, mov: (usize, usize), player: u8) -> MoveApplyTiming {
         self.game_state.make_move_with_timing(mov, player)
     }
 
