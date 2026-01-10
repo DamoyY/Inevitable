@@ -93,14 +93,13 @@ fn ai_turn(
     let board_size = config.board_size;
     let win_len = config.win_len;
     let num_threads = config.num_threads;
-    let log_interval_ms = config.log_interval_ms;
     let verbose = config.verbose;
     println!("\n轮到程序 (X) 落子。");
     let mov = if board_empty {
         (board_size / 2, board_size / 2)
     } else {
         println!("程序正在思考...");
-        let params = SearchParams::new(board_size, win_len, num_threads, log_interval_ms);
+        let params = SearchParams::new(board_size, win_len, num_threads);
         let (best_move, new_tt) = ParallelSolver::find_best_move_with_tt_and_stop(
             board.to_vec(),
             params,
@@ -121,7 +120,7 @@ fn ai_turn(
     }
     println!("程序选择落子于: {mov:?}");
     board[mov.0][mov.1] = 1;
-    if check_win(board, board_size, win_len, num_threads, log_interval_ms, 1) {
+    if check_win(board, board_size, win_len, num_threads, 1) {
         println!("\n最终棋盘:");
         print_board(board);
         println!("程序获胜");
@@ -215,7 +214,6 @@ fn check_win(
     board_size: usize,
     win_len: usize,
     num_threads: usize,
-    log_interval_ms: u64,
     player: u8,
 ) -> bool {
     let solver = ParallelSolver::new(
@@ -224,7 +222,6 @@ fn check_win(
         win_len,
         Some(1),
         num_threads,
-        log_interval_ms,
     );
     solver.game_state().check_win(player)
 }

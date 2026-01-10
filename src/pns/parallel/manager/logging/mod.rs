@@ -1,21 +1,14 @@
 use std::{
     fs::{File, OpenOptions},
     io::{self, BufWriter, Write},
-    sync::{
-        Arc,
-        atomic::{AtomicBool, Ordering},
-        mpsc,
-    },
-    thread,
+    sync::atomic::{AtomicBool, Ordering},
 };
 
-use snapshot::{LogDelta, LogSnapshot, capture_snapshot, compute_delta};
+use snapshot::{LogSnapshot, capture_snapshot};
 
 use super::{
     SharedTree,
-    metrics::{
-        calc_hit_rates, calc_timing_stats, format_sci_f64, format_sci_u64, format_sci_usize, to_f64,
-    },
+    metrics::{calc_hit_rates, calc_timing_stats, format_sci_f64, format_sci_u64, format_sci_usize},
 };
 
 mod counters;
@@ -23,14 +16,6 @@ mod snapshot;
 
 const LOG_FILE_NAME: &str = "log.csv";
 static LOG_FILE_TRUNCATED: AtomicBool = AtomicBool::new(false);
-
-fn per_second(delta: u64, elapsed_secs: f64) -> f64 {
-    if elapsed_secs > 0.0 {
-        to_f64(delta) / elapsed_secs
-    } else {
-        0.0
-    }
-}
 
 fn open_log_writer() -> io::Result<BufWriter<File>> {
     let truncate = !LOG_FILE_TRUNCATED.swap(true, Ordering::AcqRel);
@@ -53,48 +38,39 @@ fn open_log_writer() -> io::Result<BufWriter<File>> {
 fn write_csv_header(writer: &mut impl Write) -> io::Result<()> {
     writeln!(
         writer,
-        "回合,深度,迭代,扩展,根PN,根DN,速度_iter/s,扩展/s,TT大小,TT命中率,TT写入,复用表大小,\
-         复用命中率,复用节点,新建节点,平均分支,走子生成_us,落子_us,撤销_us,哈希_us,复用表_us,\
-         评估_us,其他_us,评估均耗时_us,深度截断,提前剪枝"
+        "回合,深度,用时,迭代次数,扩展节点数,TT大小,TT命中率,TT写入数,复用表大小,复用命中率,复用节点数,新建节点数,平均分支数,平均走子耗时,平均落子耗时,平均撤销耗时,平均哈希耗时,平均复用表耗时,平均评估耗时,平均其他耗时,评估均耗时,深度截断数,提前剪枝数"
     )
 }
 
 fn write_log(
     writer: &mut impl Write,
     turn: usize,
-    current: &LogSnapshot,
-    delta: &LogDelta,
+    elapsed_secs: f64,
+    snapshot: &LogSnapshot,
 ) -> io::Result<()> {
-    let ips = per_second(delta.counters.iterations, delta.elapsed_secs);
-    let eps = per_second(delta.counters.expansions, delta.elapsed_secs);
-    let timing = delta.counters.timing_input();
+    let timing = snapshot.counters.timing_input();
     let hit_rates = calc_hit_rates(
-        delta.counters.tt_hits,
-        delta.counters.tt_lookups,
-        delta.counters.node_table_hits,
-        delta.counters.node_table_lookups,
+        snapshot.counters.tt_hits,
+        snapshot.counters.tt_lookups,
+        snapshot.counters.node_table_hits,
+        snapshot.counters.node_table_lookups,
     );
     let timing_stats = calc_timing_stats(&timing);
-    let depth = current.depth_limit.unwrap_or(0);
+    let depth = snapshot.depth_limit.unwrap_or(0);
     writeln!(
         writer,
-        "{turn},{depth},{iterations},{expansions},{root_pn},{root_dn},{ips},{eps},{tt_size},\
-         {tt_hit},{tt_stores},{node_table_size},{node_hit_rate},{node_hits},{nodes_created},\
-         {branch},{movegen},{move_make},{move_undo},{hash},{node_table},{eval_per_expand},\
-         {expand_other},{eval_avg},{depth_cutoffs},{early_cutoffs}",
-        iterations = format_sci_u64(current.counters.iterations),
-        expansions = format_sci_u64(current.counters.expansions),
-        root_pn = format_sci_u64(current.root_pn),
-        root_dn = format_sci_u64(current.root_dn),
-        ips = format_sci_f64(ips),
-        eps = format_sci_f64(eps),
-        tt_size = format_sci_usize(current.tt_size),
+        "{turn},{depth},{elapsed},{iterations},{expansions},{tt_size},{tt_hit},{tt_stores},{node_table_size},{node_hit_rate},{node_hits},{nodes_created},{branch},{movegen},{move_make},{move_undo},{hash},{node_table},{eval_per_expand},{expand_other},{eval_avg},{depth_cutoffs},{early_cutoffs}",
+        depth = format_sci_usize(depth),
+        elapsed = format_sci_f64(elapsed_secs),
+        iterations = format_sci_u64(snapshot.counters.iterations),
+        expansions = format_sci_u64(snapshot.counters.expansions),
+        tt_size = format_sci_usize(snapshot.tt_size),
         tt_hit = format_sci_f64(hit_rates.tt),
-        tt_stores = format_sci_u64(current.tt_stores),
-        node_table_size = format_sci_usize(current.node_table_size),
+        tt_stores = format_sci_u64(snapshot.tt_stores),
+        node_table_size = format_sci_usize(snapshot.node_table_size),
         node_hit_rate = format_sci_f64(hit_rates.node_table),
-        node_hits = format_sci_u64(delta.counters.node_table_hits),
-        nodes_created = format_sci_u64(delta.counters.nodes_created),
+        node_hits = format_sci_u64(snapshot.counters.node_table_hits),
+        nodes_created = format_sci_u64(snapshot.counters.nodes_created),
         branch = format_sci_f64(timing_stats.branch),
         movegen = format_sci_f64(timing_stats.movegen_us),
         move_make = format_sci_f64(timing_stats.move_make_us),
@@ -104,37 +80,17 @@ fn write_log(
         eval_per_expand = format_sci_f64(timing_stats.eval_us_per_expand),
         expand_other = format_sci_f64(timing_stats.expand_other_us),
         eval_avg = format_sci_f64(timing_stats.eval_us),
-        depth_cutoffs = format_sci_u64(current.depth_cutoffs),
-        early_cutoffs = format_sci_u64(current.early_cutoffs),
+        depth_cutoffs = format_sci_u64(snapshot.depth_cutoffs),
+        early_cutoffs = format_sci_u64(snapshot.early_cutoffs),
     )
 }
 
-pub(super) fn spawn_logger(
-    tree: Arc<SharedTree>,
-    log_interval_ms: u64,
-    turn: usize,
-) -> (mpsc::Sender<()>, thread::JoinHandle<()>) {
-    let (log_tx, log_rx) = mpsc::channel::<()>();
-    let handle = thread::spawn(move || {
-        let Ok(mut writer) = open_log_writer() else {
-            return;
-        };
-        let mut last_snapshot = LogSnapshot::zero();
-        while !tree.should_stop() {
-            if log_rx
-                .recv_timeout(std::time::Duration::from_millis(log_interval_ms))
-                .is_ok()
-            {
-                break;
-            }
-            let current = capture_snapshot(&tree);
-            let delta = compute_delta(&current, &last_snapshot);
-            if write_log(&mut writer, turn, &current, &delta).is_err() {
-                break;
-            }
-            let _ = writer.flush();
-            last_snapshot = current;
-        }
-    });
-    (log_tx, handle)
+pub(super) fn write_csv_log(tree: &SharedTree, turn: usize, elapsed_secs: f64) {
+    let Ok(mut writer) = open_log_writer() else {
+        return;
+    };
+    let snapshot = capture_snapshot(tree);
+    if write_log(&mut writer, turn, elapsed_secs, &snapshot).is_ok() {
+        let _ = writer.flush();
+    }
 }

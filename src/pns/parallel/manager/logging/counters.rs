@@ -1,10 +1,6 @@
 use super::super::metrics::TimingInput;
 use crate::pns::parallel::SharedTree;
 
-const fn saturating_diff(current: u64, previous: u64) -> u64 {
-    current.saturating_sub(previous)
-}
-
 pub(super) struct LogCounters {
     pub(super) iterations: u64,
     pub(super) expansions: u64,
@@ -25,27 +21,6 @@ pub(super) struct LogCounters {
 }
 
 impl LogCounters {
-    pub(super) const fn zero() -> Self {
-        Self {
-            iterations: 0,
-            expansions: 0,
-            children_generated: 0,
-            expand_ns: 0,
-            movegen_ns: 0,
-            move_make_ns: 0,
-            move_undo_ns: 0,
-            hash_ns: 0,
-            eval_ns: 0,
-            eval_calls: 0,
-            tt_lookups: 0,
-            tt_hits: 0,
-            node_table_lookups: 0,
-            node_table_hits: 0,
-            node_table_time_ns: 0,
-            nodes_created: 0,
-        }
-    }
-
     pub(super) fn from_tree(tree: &SharedTree) -> Self {
         Self {
             iterations: tree.get_iterations(),
@@ -64,36 +39,6 @@ impl LogCounters {
             node_table_hits: tree.get_node_table_hits(),
             node_table_time_ns: tree.get_node_table_time_ns(),
             nodes_created: tree.get_nodes_created(),
-        }
-    }
-
-    pub(super) const fn diff(current: &Self, previous: &Self) -> Self {
-        Self {
-            iterations: saturating_diff(current.iterations, previous.iterations),
-            expansions: saturating_diff(current.expansions, previous.expansions),
-            children_generated: saturating_diff(
-                current.children_generated,
-                previous.children_generated,
-            ),
-            expand_ns: saturating_diff(current.expand_ns, previous.expand_ns),
-            movegen_ns: saturating_diff(current.movegen_ns, previous.movegen_ns),
-            move_make_ns: saturating_diff(current.move_make_ns, previous.move_make_ns),
-            move_undo_ns: saturating_diff(current.move_undo_ns, previous.move_undo_ns),
-            hash_ns: saturating_diff(current.hash_ns, previous.hash_ns),
-            eval_ns: saturating_diff(current.eval_ns, previous.eval_ns),
-            eval_calls: saturating_diff(current.eval_calls, previous.eval_calls),
-            tt_lookups: saturating_diff(current.tt_lookups, previous.tt_lookups),
-            tt_hits: saturating_diff(current.tt_hits, previous.tt_hits),
-            node_table_lookups: saturating_diff(
-                current.node_table_lookups,
-                previous.node_table_lookups,
-            ),
-            node_table_hits: saturating_diff(current.node_table_hits, previous.node_table_hits),
-            node_table_time_ns: saturating_diff(
-                current.node_table_time_ns,
-                previous.node_table_time_ns,
-            ),
-            nodes_created: saturating_diff(current.nodes_created, previous.nodes_created),
         }
     }
 

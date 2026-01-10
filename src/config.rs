@@ -7,7 +7,6 @@ pub struct Config {
     pub win_len: usize,
     pub verbose: bool,
     pub num_threads: usize,
-    pub log_interval_ms: u64,
 }
 impl Config {
     pub fn load() -> Self {

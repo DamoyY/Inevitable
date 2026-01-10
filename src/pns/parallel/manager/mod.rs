@@ -16,7 +16,6 @@ pub struct ParallelSolver {
     pub tree: Arc<SharedTree>,
     pub base_game_state: GomokuGameState,
     pub num_threads: usize,
-    pub log_interval_ms: u64,
     board_size: usize,
     win_len: usize,
 }
@@ -26,7 +25,6 @@ pub struct SearchParams {
     pub board_size: usize,
     pub win_len: usize,
     pub num_threads: usize,
-    pub log_interval_ms: u64,
 }
 
 impl SearchParams {
@@ -35,13 +33,11 @@ impl SearchParams {
         board_size: usize,
         win_len: usize,
         num_threads: usize,
-        log_interval_ms: u64,
     ) -> Self {
         Self {
             board_size,
             win_len,
             num_threads,
-            log_interval_ms,
         }
     }
 }
@@ -54,7 +50,6 @@ impl ParallelSolver {
         win_len: usize,
         depth_limit: Option<usize>,
         num_threads: usize,
-        log_interval_ms: u64,
     ) -> Self {
         Self::with_tt(
             initial_board,
@@ -62,7 +57,6 @@ impl ParallelSolver {
             win_len,
             depth_limit,
             num_threads,
-            log_interval_ms,
             None,
         )
     }
@@ -74,12 +68,11 @@ impl ParallelSolver {
         win_len: usize,
         depth_limit: Option<usize>,
         num_threads: usize,
-        log_interval_ms: u64,
         existing_tt: Option<TranspositionTable>,
     ) -> Self {
         Self::with_tt_and_stop(
             initial_board,
-            SearchParams::new(board_size, win_len, num_threads, log_interval_ms),
+            SearchParams::new(board_size, win_len, num_threads),
             depth_limit,
             &Arc::new(AtomicBool::new(false)),
             existing_tt,
@@ -114,7 +107,6 @@ impl ParallelSolver {
             tree,
             base_game_state: game_state,
             num_threads: params.num_threads,
-            log_interval_ms: params.log_interval_ms,
             board_size: params.board_size,
             win_len: params.win_len,
         }
@@ -138,7 +130,6 @@ impl ParallelSolver {
         board_size: usize,
         win_len: usize,
         num_threads: usize,
-        log_interval_ms: u64,
         verbose: bool,
     ) -> Option<(usize, usize)> {
         Self::find_best_move_with_tt(
@@ -146,7 +137,6 @@ impl ParallelSolver {
             board_size,
             win_len,
             num_threads,
-            log_interval_ms,
             verbose,
             None,
         )
@@ -159,13 +149,12 @@ impl ParallelSolver {
         board_size: usize,
         win_len: usize,
         num_threads: usize,
-        log_interval_ms: u64,
         verbose: bool,
         existing_tt: Option<TranspositionTable>,
     ) -> (Option<(usize, usize)>, TranspositionTable) {
         Self::find_best_move_with_tt_and_stop(
             initial_board,
-            SearchParams::new(board_size, win_len, num_threads, log_interval_ms),
+            SearchParams::new(board_size, win_len, num_threads),
             verbose,
             &Arc::new(AtomicBool::new(false)),
             existing_tt,
