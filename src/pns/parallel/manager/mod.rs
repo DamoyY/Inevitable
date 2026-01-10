@@ -7,7 +7,7 @@ use super::{
     context::ThreadLocalContext,
     shared_tree::{SharedTree, TranspositionTable},
 };
-use crate::game_state::{GomokuGameState, ZobristHasher};
+use crate::{alloc_stats, game_state::{GomokuGameState, ZobristHasher}};
 mod logging;
 mod metrics;
 mod solve;
@@ -92,6 +92,7 @@ impl ParallelSolver {
         let root_hash = game_state.get_canonical_hash();
         let root_pos_hash = game_state.get_hash();
 
+        alloc_stats::reset_alloc_free_time_ns();
         let tree = Arc::new(SharedTree::with_tt_and_stop(
             1,
             root_hash,

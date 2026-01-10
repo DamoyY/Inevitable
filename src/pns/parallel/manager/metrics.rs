@@ -72,6 +72,7 @@ pub(super) fn avg_expand_other_us(input: &TimingInput) -> f64 {
     }
     let other_ns = input
         .expand_ns
+        .saturating_sub(input.alloc_free_ns)
         .saturating_sub(input.movegen_ns)
         .saturating_sub(input.board_update_ns)
         .saturating_sub(input.bitboard_update_ns)
@@ -95,6 +96,7 @@ pub(super) struct TimingInput {
     pub expansions: u64,
     pub children_generated: u64,
     pub expand_ns: u64,
+    pub alloc_free_ns: u64,
     pub movegen_ns: u64,
     pub board_update_ns: u64,
     pub bitboard_update_ns: u64,
@@ -116,6 +118,7 @@ pub(super) struct TimingInput {
 
 pub(super) struct TimingStats {
     pub branch: f64,
+    pub alloc_free_us: f64,
     pub movegen_us: f64,
     pub board_update_us: f64,
     pub bitboard_update_us: f64,
@@ -162,6 +165,7 @@ pub(super) fn calc_timing_stats(input: &TimingInput) -> TimingStats {
 
     TimingStats {
         branch,
+        alloc_free_us: avg_us(input.alloc_free_ns, input.expansions),
         movegen_us: avg_us(input.movegen_ns, input.expansions),
         board_update_us: avg_us(input.board_update_ns, input.expansions),
         bitboard_update_us: avg_us(input.bitboard_update_ns, input.expansions),

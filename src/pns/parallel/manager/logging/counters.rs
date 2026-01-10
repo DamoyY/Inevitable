@@ -1,11 +1,12 @@
 use super::super::metrics::TimingInput;
-use crate::pns::parallel::SharedTree;
+use crate::{alloc_stats, pns::parallel::SharedTree};
 
 pub(super) struct LogCounters {
     pub(super) iterations: u64,
     pub(super) expansions: u64,
     pub(super) children_generated: u64,
     pub(super) expand_ns: u64,
+    pub(super) alloc_free_ns: u64,
     pub(super) movegen_ns: u64,
     pub(super) board_update_ns: u64,
     pub(super) bitboard_update_ns: u64,
@@ -37,6 +38,7 @@ impl LogCounters {
             expansions: tree.get_expansions(),
             children_generated: tree.get_children_generated(),
             expand_ns: tree.get_expand_time_ns(),
+            alloc_free_ns: alloc_stats::alloc_free_time_ns(),
             movegen_ns: tree.get_movegen_time_ns(),
             board_update_ns: tree.get_board_update_time_ns(),
             bitboard_update_ns: tree.get_bitboard_update_time_ns(),
@@ -67,6 +69,7 @@ impl LogCounters {
             expansions: self.expansions,
             children_generated: self.children_generated,
             expand_ns: self.expand_ns,
+            alloc_free_ns: self.alloc_free_ns,
             movegen_ns: self.movegen_ns,
             board_update_ns: self.board_update_ns,
             bitboard_update_ns: self.bitboard_update_ns,

@@ -1,3 +1,6 @@
+use five_stone::alloc_stats::TrackingAllocator;
+#[global_allocator]
+static GLOBAL: TrackingAllocator = TrackingAllocator::new();
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
