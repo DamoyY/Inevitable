@@ -7,7 +7,7 @@ pub use bitboard::Bitboard;
 pub use threat_index::ThreatIndex;
 pub use zobrist::ZobristHasher;
 pub type Coord = (usize, usize);
-pub type MoveHistory = Vec<(Coord, HashSet<Coord>)>;
+pub type MoveHistory = Vec<(Coord, Vec<u64>)>;
 pub type ForcingMoves = (Vec<Coord>, Vec<Coord>);
 pub struct MoveApplyTiming {
     pub board_update_ns: u64,
@@ -49,7 +49,7 @@ pub struct GomokuGameState {
     pub hasher: Arc<ZobristHasher>,
     pub hash: u64,
     pub threat_index: ThreatIndex,
-    pub candidate_moves: HashSet<Coord>,
+    pub candidate_moves: Vec<u64>,
     pub(crate) candidate_move_history: MoveHistory,
     pub(crate) proximity_kernel: Vec<Vec<f32>>,
     pub(crate) proximity_scale: f32,
@@ -58,12 +58,6 @@ pub struct GomokuGameState {
 }
 
 impl GomokuGameState {
-    fn neighbor_coords(&self) -> Vec<Coord> {
-        let occupied = self.bitboard.occupied();
-        let neighbors = self.bitboard.neighbors(&occupied);
-        self.bitboard.iter_bits(&neighbors).collect()
-    }
-
     #[must_use]
     pub fn new(
         initial_board: Vec<Vec<u8>>,
@@ -74,6 +68,7 @@ impl GomokuGameState {
         let board = initial_board;
         let board_size = board.len();
         let bitboard = Bitboard::from_board(&board);
+        let candidate_moves = bitboard.empty_mask();
         let (proximity_kernel, proximity_scale) = Self::init_proximity_kernel(board_size);
         let positional_bonus = Self::init_positional_bonus(board_size);
         let mut state = Self {
@@ -84,7 +79,7 @@ impl GomokuGameState {
             hasher,
             hash: 0u64,
             threat_index: ThreatIndex::new(board_size, win_len),
-            candidate_moves: HashSet::new(),
+            candidate_moves,
             candidate_move_history: Vec::new(),
             proximity_kernel,
             proximity_scale,
@@ -99,16 +94,15 @@ impl GomokuGameState {
     }
 
     pub(crate) fn rebuild_candidate_moves(&mut self) {
-        self.candidate_moves.clear();
         let occupied = self.bitboard.occupied();
         if Bitboard::is_all_zeros(&occupied) {
+            self.candidate_moves.fill(0);
             let center = self.board_size / 2;
-            self.candidate_moves.insert((center, center));
+            self.bitboard
+                .set_in(&mut self.candidate_moves, center, center);
             return;
         }
-        for coord in self.neighbor_coords() {
-            self.candidate_moves.insert(coord);
-        }
+        self.candidate_moves = self.bitboard.neighbors(&occupied);
     }
 
     pub(crate) fn rebuild_hashes(&mut self, player: u8) {
@@ -218,9 +212,10 @@ impl GomokuGameState {
         let threat_start = Instant::now();
         self.threat_index.update_on_move(mov, player);
         timing.threat_index_update_ns = duration_to_ns(threat_start.elapsed());
-        let mut newly_added_candidates = HashSet::new();
+        let mut newly_added_candidates = self.bitboard.empty_mask();
         let candidate_remove_start = Instant::now();
-        self.candidate_moves.remove(&mov);
+        self.bitboard
+            .clear_in(&mut self.candidate_moves, r, c);
         timing.candidate_remove_ns = duration_to_ns(candidate_remove_start.elapsed());
         let candidate_neighbor_start = Instant::now();
         let mut neighbor_coords = Vec::new();
@@ -239,13 +234,15 @@ impl GomokuGameState {
         let mut candidate_insert_ns = 0u64;
         let mut candidate_newly_added_ns = 0u64;
         for coord in neighbor_coords {
+            let (word_idx, mask) = self.bitboard.coord_to_bit(coord.0, coord.1);
             let insert_start = Instant::now();
-            let inserted = self.candidate_moves.insert(coord);
+            let inserted = self.candidate_moves[word_idx] & mask == 0;
+            self.candidate_moves[word_idx] |= mask;
             candidate_insert_ns =
                 candidate_insert_ns.saturating_add(duration_to_ns(insert_start.elapsed()));
             if inserted {
                 let newly_added_start = Instant::now();
-                newly_added_candidates.insert(coord);
+                newly_added_candidates[word_idx] |= mask;
                 candidate_newly_added_ns = candidate_newly_added_ns
                     .saturating_add(duration_to_ns(newly_added_start.elapsed()));
             }
@@ -274,9 +271,14 @@ impl GomokuGameState {
         self.board[r][c] = 0;
         self.bitboard.clear(r, c);
         debug_assert_eq!(undone_move, mov, "Undo mismatch");
-        self.candidate_moves.insert(undone_move);
-        for m in added_by_this_move {
-            self.candidate_moves.remove(&m);
+        let (word_idx, mask) = self.bitboard.coord_to_bit(undone_move.0, undone_move.1);
+        self.candidate_moves[word_idx] |= mask;
+        for (candidate_word, added_word) in self
+            .candidate_moves
+            .iter_mut()
+            .zip(added_by_this_move.iter())
+        {
+            *candidate_word &= !added_word;
         }
         self.hash ^= self.hasher.side_to_move_hash;
         self.hash ^= self.hasher.get_hash(r, c, player as usize);

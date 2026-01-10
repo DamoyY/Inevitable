@@ -26,6 +26,35 @@ impl Bitboard {
     }
 
     #[inline]
+    #[must_use]
+    pub const fn coord_to_bit(&self, r: usize, c: usize) -> (usize, u64) {
+        let (word_idx, bit_idx) = self.coord_to_index(r, c);
+        (word_idx, 1u64 << bit_idx)
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn empty_mask(&self) -> Vec<u64> {
+        vec![0u64; self.num_words]
+    }
+
+    #[inline]
+    pub fn set_in(&self, bits: &mut [u64], r: usize, c: usize) -> bool {
+        let (word_idx, mask) = self.coord_to_bit(r, c);
+        let was_set = bits[word_idx] & mask != 0;
+        bits[word_idx] |= mask;
+        !was_set
+    }
+
+    #[inline]
+    pub fn clear_in(&self, bits: &mut [u64], r: usize, c: usize) -> bool {
+        let (word_idx, mask) = self.coord_to_bit(r, c);
+        let was_set = bits[word_idx] & mask != 0;
+        bits[word_idx] &= !mask;
+        was_set
+    }
+
+    #[inline]
     pub fn set(&mut self, r: usize, c: usize, player: u8) {
         let (word_idx, bit_idx) = self.coord_to_index(r, c);
         let bit = 1u64 << bit_idx;
