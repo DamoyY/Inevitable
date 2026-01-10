@@ -1,5 +1,5 @@
 use super::node::NodeRef;
-use crate::game_state::{GomokuGameState, MoveApplyTiming};
+use crate::game_state::{BitboardWorkspace, GomokuGameState, MoveApplyTiming};
 
 pub struct PathEntry {
     pub node: NodeRef,
@@ -13,14 +13,17 @@ pub struct ThreadLocalContext {
     pub game_state: GomokuGameState,
     pub path_stack: Vec<PathEntry>,
     pub thread_id: usize,
+    pub bitboard_workspace: BitboardWorkspace,
 }
 
 impl ThreadLocalContext {
     pub fn new(game_state: GomokuGameState, thread_id: usize) -> Self {
+        let num_words = game_state.bitboard.num_words();
         Self {
             game_state,
             path_stack: Vec::with_capacity(256),
             thread_id,
+            bitboard_workspace: BitboardWorkspace::new(num_words),
         }
     }
 
@@ -73,7 +76,8 @@ impl ThreadLocalContext {
         self.game_state.get_hash()
     }
 
-    pub fn get_legal_moves(&self, player: u8) -> Vec<(usize, usize)> {
-        self.game_state.get_legal_moves(player)
+    pub fn get_legal_moves(&mut self, player: u8) -> Vec<(usize, usize)> {
+        self.game_state
+            .get_legal_moves(player, &mut self.bitboard_workspace)
     }
 }
