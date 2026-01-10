@@ -2,7 +2,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use serde::Serialize;
 
-use crate::game_state::MoveApplyTiming;
+use crate::{alloc_stats::AllocTimingSnapshot, game_state::MoveApplyTiming};
 
 fn to_f64(value: u64) -> f64 {
     let value_u32 = u32::try_from(value).unwrap_or(u32::MAX);
@@ -60,9 +60,9 @@ macro_rules! define_metrics {
 
         impl TreeStatsSnapshot {
             #[must_use]
-            pub const fn expand_other_ns(&self, alloc_free_ns: u64) -> u64 {
+            pub const fn expand_other_ns(&self, alloc_timing: AllocTimingSnapshot) -> u64 {
                 self.expand_time_ns
-                    .saturating_sub(alloc_free_ns)
+                    .saturating_sub(alloc_timing.total_ns())
                     .saturating_sub(self.movegen_time_ns)
                     .saturating_sub(self.board_update_time_ns)
                     .saturating_sub(self.bitboard_update_time_ns)
@@ -100,9 +100,12 @@ macro_rules! define_metrics {
 
         impl TimingStats {
             #[must_use]
-            pub fn from_snapshot(snapshot: &TreeStatsSnapshot, alloc_free_ns: u64) -> Self {
+            pub fn from_snapshot(
+                snapshot: &TreeStatsSnapshot,
+                alloc_timing: AllocTimingSnapshot,
+            ) -> Self {
                 Self {
-                    $($lname: ($calc)(snapshot, alloc_free_ns),)*
+                    $($lname: ($calc)(snapshot, alloc_timing),)*
                 }
             }
 
@@ -171,9 +174,30 @@ define_metrics! {
                 0.0
             }
         }),
-        alloc_free_us => ("内存分配回收耗时", |snapshot: &TreeStatsSnapshot, alloc_free_ns| {
-            avg_us(alloc_free_ns, snapshot.expansions)
-        }),
+        alloc_us => (
+            "内存分配耗时",
+            |snapshot: &TreeStatsSnapshot, alloc_timing: AllocTimingSnapshot| {
+                avg_us(alloc_timing.alloc_ns, snapshot.expansions)
+            }
+        ),
+        dealloc_us => (
+            "内存释放耗时",
+            |snapshot: &TreeStatsSnapshot, alloc_timing: AllocTimingSnapshot| {
+                avg_us(alloc_timing.dealloc_ns, snapshot.expansions)
+            }
+        ),
+        realloc_us => (
+            "内存重分配耗时",
+            |snapshot: &TreeStatsSnapshot, alloc_timing: AllocTimingSnapshot| {
+                avg_us(alloc_timing.realloc_ns, snapshot.expansions)
+            }
+        ),
+        alloc_zeroed_us => (
+            "内存归零耗时",
+            |snapshot: &TreeStatsSnapshot, alloc_timing: AllocTimingSnapshot| {
+                avg_us(alloc_timing.alloc_zeroed_ns, snapshot.expansions)
+            }
+        ),
         movegen_us => ("平均走子耗时", |snapshot: &TreeStatsSnapshot, _| {
             avg_us(snapshot.movegen_time_ns, snapshot.expansions)
         }),
@@ -222,9 +246,12 @@ define_metrics! {
         children_lock_us => ("平均子节点锁耗时", |snapshot: &TreeStatsSnapshot, _| {
             avg_us(snapshot.children_lock_time_ns, snapshot.expansions)
         }),
-        expand_other_us => ("平均其他耗时", |snapshot: &TreeStatsSnapshot, alloc_free_ns| {
-            avg_us(snapshot.expand_other_ns(alloc_free_ns), snapshot.expansions)
-        }),
+        expand_other_us => (
+            "平均其他耗时",
+            |snapshot: &TreeStatsSnapshot, alloc_timing: AllocTimingSnapshot| {
+                avg_us(snapshot.expand_other_ns(alloc_timing), snapshot.expansions)
+            }
+        ),
         eval_us => ("单次评估函数耗时", |snapshot: &TreeStatsSnapshot, _| {
             avg_us(snapshot.eval_time_ns, snapshot.eval_calls)
         }),

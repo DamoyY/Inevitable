@@ -7,7 +7,10 @@ use super::{
     context::ThreadLocalContext,
     shared_tree::{NodeTable, SharedTree, TranspositionTable},
 };
-use crate::{alloc_stats, game_state::{GomokuGameState, ZobristHasher}};
+use crate::{
+    alloc_stats,
+    game_state::{GomokuGameState, ZobristHasher},
+};
 mod logging;
 mod metrics;
 mod solve;
@@ -29,11 +32,7 @@ pub struct SearchParams {
 
 impl SearchParams {
     #[must_use]
-    pub const fn new(
-        board_size: usize,
-        win_len: usize,
-        num_threads: usize,
-    ) -> Self {
+    pub const fn new(board_size: usize, win_len: usize, num_threads: usize) -> Self {
         Self {
             board_size,
             win_len,
@@ -91,7 +90,7 @@ impl ParallelSolver {
         existing_tt: Option<TranspositionTable>,
         existing_node_table: Option<NodeTable>,
     ) -> Self {
-        alloc_stats::reset_alloc_free_time_ns();
+        alloc_stats::reset_alloc_timing_ns();
         let _alloc_guard = alloc_stats::AllocTrackingGuard::new();
         let hasher = Arc::new(ZobristHasher::new(params.board_size));
         let game_state = GomokuGameState::new(initial_board, hasher, 1, params.win_len);

@@ -7,7 +7,10 @@ use std::{
 
 use mimalloc::MiMalloc;
 
-static ALLOC_FREE_TIME_NS: AtomicU64 = AtomicU64::new(0);
+static ALLOC_TIME_NS: AtomicU64 = AtomicU64::new(0);
+static DEALLOC_TIME_NS: AtomicU64 = AtomicU64::new(0);
+static REALLOC_TIME_NS: AtomicU64 = AtomicU64::new(0);
+static ALLOC_ZEROED_TIME_NS: AtomicU64 = AtomicU64::new(0);
 
 thread_local! {
     static ALLOC_TRACKING_DEPTH: Cell<u32> = const { Cell::new(0) };
@@ -39,12 +42,38 @@ impl Drop for AllocTrackingGuard {
     }
 }
 
-pub fn reset_alloc_free_time_ns() {
-    ALLOC_FREE_TIME_NS.store(0, Ordering::Relaxed);
+pub fn reset_alloc_timing_ns() {
+    ALLOC_TIME_NS.store(0, Ordering::Relaxed);
+    DEALLOC_TIME_NS.store(0, Ordering::Relaxed);
+    REALLOC_TIME_NS.store(0, Ordering::Relaxed);
+    ALLOC_ZEROED_TIME_NS.store(0, Ordering::Relaxed);
 }
 
-pub fn alloc_free_time_ns() -> u64 {
-    ALLOC_FREE_TIME_NS.load(Ordering::Relaxed)
+#[derive(Clone, Copy, Default)]
+pub struct AllocTimingSnapshot {
+    pub alloc_ns: u64,
+    pub dealloc_ns: u64,
+    pub realloc_ns: u64,
+    pub alloc_zeroed_ns: u64,
+}
+
+impl AllocTimingSnapshot {
+    #[must_use]
+    pub const fn total_ns(self) -> u64 {
+        self.alloc_ns
+            .saturating_add(self.dealloc_ns)
+            .saturating_add(self.realloc_ns)
+            .saturating_add(self.alloc_zeroed_ns)
+    }
+}
+
+pub fn alloc_timing_snapshot() -> AllocTimingSnapshot {
+    AllocTimingSnapshot {
+        alloc_ns: ALLOC_TIME_NS.load(Ordering::Relaxed),
+        dealloc_ns: DEALLOC_TIME_NS.load(Ordering::Relaxed),
+        realloc_ns: REALLOC_TIME_NS.load(Ordering::Relaxed),
+        alloc_zeroed_ns: ALLOC_ZEROED_TIME_NS.load(Ordering::Relaxed),
+    }
 }
 
 fn tracking_enabled() -> bool {
@@ -56,15 +85,15 @@ fn duration_to_ns(duration: Duration) -> u64 {
     u64::try_from(nanos).unwrap_or(u64::MAX)
 }
 
-fn record_alloc_time(elapsed: Duration) {
-    ALLOC_FREE_TIME_NS.fetch_add(duration_to_ns(elapsed), Ordering::Relaxed);
+fn record_alloc_time(target: &AtomicU64, elapsed: Duration) {
+    target.fetch_add(duration_to_ns(elapsed), Ordering::Relaxed);
 }
 
-fn track_alloc_time<R>(action: impl FnOnce() -> R) -> R {
+fn track_alloc_time<R>(target: &AtomicU64, action: impl FnOnce() -> R) -> R {
     if tracking_enabled() {
         let start = Instant::now();
         let result = action();
-        record_alloc_time(start.elapsed());
+        record_alloc_time(target, start.elapsed());
         result
     } else {
         action()
@@ -90,18 +119,24 @@ impl Default for TrackingAllocator {
 
 unsafe impl GlobalAlloc for TrackingAllocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        track_alloc_time(|| unsafe { self.inner.alloc(layout) })
+        track_alloc_time(&ALLOC_TIME_NS, || unsafe { self.inner.alloc(layout) })
     }
 
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
-        track_alloc_time(|| unsafe { self.inner.dealloc(ptr, layout) });
+        track_alloc_time(&DEALLOC_TIME_NS, || unsafe {
+            self.inner.dealloc(ptr, layout);
+        });
     }
 
     unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
-        track_alloc_time(|| unsafe { self.inner.realloc(ptr, layout, new_size) })
+        track_alloc_time(&REALLOC_TIME_NS, || unsafe {
+            self.inner.realloc(ptr, layout, new_size)
+        })
     }
 
     unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
-        track_alloc_time(|| unsafe { self.inner.alloc_zeroed(layout) })
+        track_alloc_time(&ALLOC_ZEROED_TIME_NS, || unsafe {
+            self.inner.alloc_zeroed(layout)
+        })
     }
 }

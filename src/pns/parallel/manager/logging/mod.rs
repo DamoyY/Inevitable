@@ -6,8 +6,11 @@ use std::{
 
 use snapshot::{LogSnapshot, capture_snapshot};
 
-use super::{SharedTree, metrics::{calc_hit_rates, format_sci_f64, format_sci_u64, format_sci_usize}};
-use super::super::TimingStats;
+use super::{
+    super::TimingStats,
+    SharedTree,
+    metrics::{calc_hit_rates, format_sci_f64, format_sci_u64, format_sci_usize},
+};
 
 mod snapshot;
 
@@ -67,7 +70,7 @@ fn write_log(
         stats.node_table_hits,
         stats.node_table_lookups,
     );
-    let timing_stats = TimingStats::from_snapshot(&stats, snapshot.alloc_free_ns);
+    let timing_stats = TimingStats::from_snapshot(&stats, snapshot.alloc_timing);
     let depth = snapshot.depth_limit.unwrap_or(0);
     let mut fields = vec![
         turn.to_string(),
