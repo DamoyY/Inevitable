@@ -48,8 +48,25 @@ impl SharedTree {
         self.total_movegen_time_ns.load(Ordering::Relaxed)
     }
 
-    pub fn get_move_make_time_ns(&self) -> u64 {
-        self.total_move_make_time_ns.load(Ordering::Relaxed)
+    pub fn get_board_update_time_ns(&self) -> u64 {
+        self.total_board_update_time_ns.load(Ordering::Relaxed)
+    }
+
+    pub fn get_bitboard_update_time_ns(&self) -> u64 {
+        self.total_bitboard_update_time_ns.load(Ordering::Relaxed)
+    }
+
+    pub fn get_threat_index_update_time_ns(&self) -> u64 {
+        self.total_threat_index_update_time_ns
+            .load(Ordering::Relaxed)
+    }
+
+    pub fn get_candidate_update_time_ns(&self) -> u64 {
+        self.total_candidate_update_time_ns.load(Ordering::Relaxed)
+    }
+
+    pub fn get_hash_update_time_ns(&self) -> u64 {
+        self.total_hash_update_time_ns.load(Ordering::Relaxed)
     }
 
     pub fn get_move_undo_time_ns(&self) -> u64 {

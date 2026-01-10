@@ -1,4 +1,4 @@
-use std::{collections::HashSet, sync::Arc};
+use std::{collections::HashSet, sync::Arc, time::Instant};
 mod bitboard;
 mod evaluation;
 mod threat_index;
@@ -9,6 +9,30 @@ pub use zobrist::ZobristHasher;
 pub type Coord = (usize, usize);
 pub type MoveHistory = Vec<(Coord, HashSet<Coord>)>;
 pub type ForcingMoves = (Vec<Coord>, Vec<Coord>);
+pub struct MoveApplyTiming {
+    pub board_update_ns: u64,
+    pub bitboard_update_ns: u64,
+    pub threat_index_update_ns: u64,
+    pub candidate_update_ns: u64,
+    pub hash_update_ns: u64,
+}
+
+impl MoveApplyTiming {
+    #[must_use]
+    pub const fn zero() -> Self {
+        Self {
+            board_update_ns: 0,
+            bitboard_update_ns: 0,
+            threat_index_update_ns: 0,
+            candidate_update_ns: 0,
+            hash_update_ns: 0,
+        }
+    }
+}
+
+fn duration_to_ns(duration: std::time::Duration) -> u64 {
+    u64::try_from(duration.as_nanos()).unwrap_or(u64::MAX)
+}
 pub struct GomokuGameState {
     pub board: Vec<Vec<u8>>,
     pub bitboard: Bitboard,
@@ -167,10 +191,22 @@ impl GomokuGameState {
     }
 
     pub fn make_move(&mut self, mov: Coord, player: u8) {
+        let _ = self.make_move_with_timing(mov, player);
+    }
+
+    pub fn make_move_with_timing(&mut self, mov: Coord, player: u8) -> MoveApplyTiming {
         let (r, c) = mov;
+        let mut timing = MoveApplyTiming::zero();
+        let board_start = Instant::now();
         self.board[r][c] = player;
+        timing.board_update_ns = duration_to_ns(board_start.elapsed());
+        let bitboard_start = Instant::now();
         self.bitboard.set(r, c, player);
+        timing.bitboard_update_ns = duration_to_ns(bitboard_start.elapsed());
+        let threat_start = Instant::now();
         self.threat_index.update_on_move(mov, player);
+        timing.threat_index_update_ns = duration_to_ns(threat_start.elapsed());
+        let candidate_start = Instant::now();
         let mut newly_added_candidates = HashSet::new();
         self.candidate_moves.remove(&mov);
         for coord in self.neighbor_coords() {
@@ -180,8 +216,12 @@ impl GomokuGameState {
         }
         self.candidate_move_history
             .push((mov, newly_added_candidates));
+        timing.candidate_update_ns = duration_to_ns(candidate_start.elapsed());
+        let hash_start = Instant::now();
         self.hash ^= self.hasher.get_hash(r, c, player as usize);
         self.hash ^= self.hasher.side_to_move_hash;
+        timing.hash_update_ns = duration_to_ns(hash_start.elapsed());
+        timing
     }
 
     pub fn undo_move(&mut self, mov: Coord) {

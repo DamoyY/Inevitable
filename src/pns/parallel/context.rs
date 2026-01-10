@@ -1,5 +1,5 @@
 use super::node::NodeRef;
-use crate::game_state::GomokuGameState;
+use crate::game_state::{GomokuGameState, MoveApplyTiming};
 
 pub struct PathEntry {
     pub node: NodeRef,
@@ -26,6 +26,14 @@ impl ThreadLocalContext {
 
     pub fn make_move(&mut self, mov: (usize, usize), player: u8) {
         self.game_state.make_move(mov, player);
+    }
+
+    pub fn make_move_with_timing(
+        &mut self,
+        mov: (usize, usize),
+        player: u8,
+    ) -> MoveApplyTiming {
+        self.game_state.make_move_with_timing(mov, player)
     }
 
     pub fn undo_move(&mut self, mov: (usize, usize)) {

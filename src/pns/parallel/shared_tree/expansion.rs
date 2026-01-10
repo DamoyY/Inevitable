@@ -38,10 +38,19 @@ impl SharedTree {
             .fetch_add(duration_to_ns(movegen_start.elapsed()), Ordering::Relaxed);
         let mut children = Vec::with_capacity(legal_moves.len());
         for mov in legal_moves {
-            let apply_start = Instant::now();
-            ctx.make_move(mov, player);
-            self.total_move_make_time_ns
-                .fetch_add(duration_to_ns(apply_start.elapsed()), Ordering::Relaxed);
+            let move_timing = ctx.make_move_with_timing(mov, player);
+            self.total_board_update_time_ns
+                .fetch_add(move_timing.board_update_ns, Ordering::Relaxed);
+            self.total_bitboard_update_time_ns
+                .fetch_add(move_timing.bitboard_update_ns, Ordering::Relaxed);
+            self.total_threat_index_update_time_ns.fetch_add(
+                move_timing.threat_index_update_ns,
+                Ordering::Relaxed,
+            );
+            self.total_candidate_update_time_ns
+                .fetch_add(move_timing.candidate_update_ns, Ordering::Relaxed);
+            self.total_hash_update_time_ns
+                .fetch_add(move_timing.hash_update_ns, Ordering::Relaxed);
             let pos_hash_start = Instant::now();
             let child_pos_hash = ctx.get_hash();
             self.total_hash_time_ns

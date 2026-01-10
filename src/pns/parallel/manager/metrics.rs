@@ -73,7 +73,11 @@ pub(super) fn avg_expand_other_us(input: &TimingInput) -> f64 {
     let other_ns = input
         .expand_ns
         .saturating_sub(input.movegen_ns)
-        .saturating_sub(input.move_make_ns)
+        .saturating_sub(input.board_update_ns)
+        .saturating_sub(input.bitboard_update_ns)
+        .saturating_sub(input.threat_index_update_ns)
+        .saturating_sub(input.candidate_update_ns)
+        .saturating_sub(input.hash_update_ns)
         .saturating_sub(input.move_undo_ns)
         .saturating_sub(input.hash_ns)
         .saturating_sub(input.node_table_lookup_ns)
@@ -87,7 +91,11 @@ pub(super) struct TimingInput {
     pub children_generated: u64,
     pub expand_ns: u64,
     pub movegen_ns: u64,
-    pub move_make_ns: u64,
+    pub board_update_ns: u64,
+    pub bitboard_update_ns: u64,
+    pub threat_index_update_ns: u64,
+    pub candidate_update_ns: u64,
+    pub hash_update_ns: u64,
     pub move_undo_ns: u64,
     pub hash_ns: u64,
     pub node_table_lookup_ns: u64,
@@ -99,7 +107,11 @@ pub(super) struct TimingInput {
 pub(super) struct TimingStats {
     pub branch: f64,
     pub movegen_us: f64,
-    pub move_make_us: f64,
+    pub board_update_us: f64,
+    pub bitboard_update_us: f64,
+    pub threat_index_update_us: f64,
+    pub candidate_update_us: f64,
+    pub hash_update_us: f64,
     pub move_undo_us: f64,
     pub hash_us: f64,
     pub node_table_lookup_us: f64,
@@ -136,7 +148,11 @@ pub(super) fn calc_timing_stats(input: &TimingInput) -> TimingStats {
     TimingStats {
         branch,
         movegen_us: avg_us(input.movegen_ns, input.expansions),
-        move_make_us: avg_us(input.move_make_ns, input.expansions),
+        board_update_us: avg_us(input.board_update_ns, input.expansions),
+        bitboard_update_us: avg_us(input.bitboard_update_ns, input.expansions),
+        threat_index_update_us: avg_us(input.threat_index_update_ns, input.expansions),
+        candidate_update_us: avg_us(input.candidate_update_ns, input.expansions),
+        hash_update_us: avg_us(input.hash_update_ns, input.expansions),
         move_undo_us: avg_us(input.move_undo_ns, input.expansions),
         hash_us: avg_us(input.hash_ns, input.expansions),
         node_table_lookup_us: avg_us(input.node_table_lookup_ns, input.expansions),
