@@ -39,6 +39,7 @@ axes[0].stackplot(
 )
 axes[0].axhline(0, color="#000000", linewidth=1.5)
 axes[0].set_ylabel("耗时（μs）", fontsize=26)
+axes[0].set_ylim(-200, 200)
 axes[0].grid(True, alpha=0.25)
 fig.legend(
     time_cols,
@@ -67,9 +68,11 @@ else:
 for ax in axes:
     ax.tick_params(axis="y", labelsize=20)
 plt.tight_layout(rect=[0, 0, 1, 1])
-timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+timestamp = datetime.now().strftime("%m%d%H%M")
 png_root, png_ext = os.path.splitext("耗时折线图")
 png_ext = png_ext or ".png"
-png_path = f"{png_root}_{timestamp}{png_ext}"
+output_dir = "visualization"
+os.makedirs(output_dir, exist_ok=True)
+png_path = os.path.join(output_dir, f"{png_root}_{timestamp}{png_ext}")
 plt.savefig(png_path, bbox_inches="tight")
 plt.close()

@@ -1,6 +1,17 @@
 use super::{Coord, GomokuGameState};
 
 impl GomokuGameState {
+    pub(crate) fn make_proximity_maps(board_size: usize) -> [Vec<Vec<f32>>; 2] {
+        [
+            Self::empty_proximity_map(board_size),
+            Self::empty_proximity_map(board_size),
+        ]
+    }
+
+    pub(crate) fn empty_proximity_map(board_size: usize) -> Vec<Vec<f32>> {
+        vec![vec![0.0f32; board_size]; board_size]
+    }
+
     pub(crate) fn init_proximity_kernel(_board_size: usize) -> (Vec<Vec<f32>>, f32) {
         let k_size = 7;
         let k_center = k_size / 2;
@@ -30,34 +41,69 @@ impl GomokuGameState {
         positional_bonus
     }
 
-    pub(crate) fn conv2d(input: &[Vec<f32>], kernel: &[Vec<f32>]) -> Vec<Vec<f32>> {
-        let input_h = input.len();
-        let input_w = input[0].len();
-        let kernel_h = kernel.len();
-        let kernel_w = kernel[0].len();
-        let pad_h = kernel_h / 2;
-        let pad_w = kernel_w / 2;
-        let mut output = vec![vec![0.0f32; input_w]; input_h];
-        for (i, output_row) in output.iter_mut().enumerate() {
-            for (j, output_cell) in output_row.iter_mut().enumerate() {
-                let mut sum = 0.0f32;
-                for (ki, kernel_row) in kernel.iter().enumerate() {
-                    for (kj, &kernel_val) in kernel_row.iter().enumerate() {
-                        let ii = i + ki;
-                        let jj = j + kj;
-                        if ii >= pad_h && jj >= pad_w {
-                            let ii_idx = ii - pad_h;
-                            let jj_idx = jj - pad_w;
-                            if ii_idx < input_h && jj_idx < input_w {
-                                sum += input[ii_idx][jj_idx] * kernel_val;
-                            }
-                        }
-                    }
+    pub(crate) fn rebuild_proximity_maps(&mut self) {
+        self.proximity_maps = Self::make_proximity_maps(self.board_size);
+        for r in 0..self.board_size {
+            for c in 0..self.board_size {
+                let player = self.board[r][c];
+                if player == 1 || player == 2 {
+                    self.apply_proximity_delta((r, c), player, 1.0);
                 }
-                *output_cell = sum;
             }
         }
-        output
+    }
+
+    pub(crate) fn apply_proximity_delta(&mut self, mov: Coord, player: u8, delta: f32) {
+        let player_idx = usize::from(player).saturating_sub(1);
+        if player_idx >= self.proximity_maps.len() {
+            return;
+        }
+        let (r, c) = mov;
+        let kernel_h = self.proximity_kernel.len();
+        let pad_h = kernel_h / 2;
+        let pad_w = self.proximity_kernel[0].len() / 2;
+        let r = isize::try_from(r).ok();
+        let c = isize::try_from(c).ok();
+        let pad_h = isize::try_from(pad_h).ok();
+        let pad_w = isize::try_from(pad_w).ok();
+        let board_limit = isize::try_from(self.board_size).ok();
+        let (Some(r), Some(c), Some(pad_h), Some(pad_w), Some(board_limit)) =
+            (r, c, pad_h, pad_w, board_limit)
+        else {
+            return;
+        };
+        let Some(base_r) = r.checked_add(pad_h) else {
+            return;
+        };
+        let Some(base_c) = c.checked_add(pad_w) else {
+            return;
+        };
+        let target_map = &mut self.proximity_maps[player_idx];
+        for (ki, kernel_row) in self.proximity_kernel.iter().enumerate() {
+            let Some(ki) = isize::try_from(ki).ok() else {
+                return;
+            };
+            let out_r = base_r - ki;
+            if out_r < 0 || out_r >= board_limit {
+                continue;
+            }
+            let Ok(out_r) = usize::try_from(out_r) else {
+                continue;
+            };
+            for (kj, &kernel_val) in kernel_row.iter().enumerate() {
+                let Some(kj) = isize::try_from(kj).ok() else {
+                    return;
+                };
+                let out_c = base_c - kj;
+                if out_c < 0 || out_c >= board_limit {
+                    continue;
+                }
+                let Ok(out_c) = usize::try_from(out_c) else {
+                    continue;
+                };
+                target_map[out_r][out_c] += kernel_val * delta;
+            }
+        }
     }
 
     pub(crate) fn score_moves(&self, player: u8, moves_to_score: &[Coord]) -> Vec<(Coord, f32)> {
@@ -74,19 +120,16 @@ impl GomokuGameState {
         if moves_to_score.is_empty() {
             return Vec::new();
         }
-        let mut p_board = vec![vec![0.0f32; self.board_size]; self.board_size];
-        for (board_row, p_board_row) in self.board.iter().zip(p_board.iter_mut()) {
-            for (&board_val, p_board_val) in board_row.iter().zip(p_board_row.iter_mut()) {
-                if board_val == player {
-                    *p_board_val = 1.0;
-                }
-            }
-        }
         let mut total_scores = self.positional_bonus.clone();
-        let proximity_conv = Self::conv2d(&p_board, &self.proximity_kernel);
-        for (total_row, conv_row) in total_scores.iter_mut().zip(proximity_conv.iter()) {
-            for (total_cell, &conv_val) in total_row.iter_mut().zip(conv_row.iter()) {
-                *total_cell += conv_val * self.proximity_scale;
+        let player_idx = usize::from(player).saturating_sub(1);
+        if player_idx < self.proximity_maps.len() {
+            let proximity_map = &self.proximity_maps[player_idx];
+            for (total_row, proximity_row) in total_scores.iter_mut().zip(proximity_map.iter()) {
+                for (total_cell, &proximity_val) in
+                    total_row.iter_mut().zip(proximity_row.iter())
+                {
+                    *total_cell += proximity_val * self.proximity_scale;
+                }
             }
         }
         let patterns_to_score = [

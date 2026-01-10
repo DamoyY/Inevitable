@@ -54,6 +54,7 @@ pub struct GomokuGameState {
     pub(crate) proximity_kernel: Vec<Vec<f32>>,
     pub(crate) proximity_scale: f32,
     pub(crate) positional_bonus: Vec<Vec<f32>>,
+    pub(crate) proximity_maps: [Vec<Vec<f32>>; 2],
 }
 
 impl GomokuGameState {
@@ -88,10 +89,12 @@ impl GomokuGameState {
             proximity_kernel,
             proximity_scale,
             positional_bonus,
+            proximity_maps: Self::make_proximity_maps(board_size),
         };
         state.rebuild_hashes(current_player);
         state.threat_index.initialize_from_board(&state.board);
         state.rebuild_candidate_moves();
+        state.rebuild_proximity_maps();
         state
     }
 
@@ -194,7 +197,7 @@ impl GomokuGameState {
 
     fn score_and_sort_moves(&self, player: u8, moves: &[Coord]) -> Vec<Coord> {
         let mut scored_moves = self.score_moves(player, moves);
-        scored_moves.sort_by(|a, b| b.1.total_cmp(&a.1));
+        scored_moves.sort_unstable_by(|a, b| b.1.total_cmp(&a.1));
         scored_moves.into_iter().map(|(coord, _)| coord).collect()
     }
 
@@ -211,6 +214,7 @@ impl GomokuGameState {
         let bitboard_start = Instant::now();
         self.bitboard.set(r, c, player);
         timing.bitboard_update_ns = duration_to_ns(bitboard_start.elapsed());
+        self.apply_proximity_delta(mov, player, 1.0);
         let threat_start = Instant::now();
         self.threat_index.update_on_move(mov, player);
         timing.threat_index_update_ns = duration_to_ns(threat_start.elapsed());
@@ -265,6 +269,7 @@ impl GomokuGameState {
         };
         let (r, c) = mov;
         let player = self.board[r][c];
+        self.apply_proximity_delta(mov, player, -1.0);
         self.threat_index.update_on_undo(mov, player);
         self.board[r][c] = 0;
         self.bitboard.clear(r, c);
