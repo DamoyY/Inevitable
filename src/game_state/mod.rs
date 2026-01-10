@@ -1,5 +1,8 @@
 use std::{collections::HashSet, sync::Arc, time::Instant};
+
 use smallvec::SmallVec;
+
+use crate::utils::{board_index, duration_to_ns};
 mod bitboard;
 mod evaluation;
 mod threat_index;
@@ -10,38 +13,26 @@ pub use zobrist::ZobristHasher;
 pub type Coord = (usize, usize);
 pub type MoveHistory = Vec<(Coord, SmallVec<[u64; 8]>)>;
 pub type ForcingMoves = (Vec<Coord>, Vec<Coord>);
-pub struct MoveApplyTiming {
-    pub board_update_ns: u64,
-    pub bitboard_update_ns: u64,
-    pub threat_index_update_ns: u64,
-    pub candidate_remove_ns: u64,
-    pub candidate_neighbor_ns: u64,
-    pub candidate_insert_ns: u64,
-    pub candidate_newly_added_ns: u64,
-    pub candidate_history_ns: u64,
-    pub hash_update_ns: u64,
-}
-
-impl MoveApplyTiming {
-    #[must_use]
-    pub const fn zero() -> Self {
-        Self {
-            board_update_ns: 0,
-            bitboard_update_ns: 0,
-            threat_index_update_ns: 0,
-            candidate_remove_ns: 0,
-            candidate_neighbor_ns: 0,
-            candidate_insert_ns: 0,
-            candidate_newly_added_ns: 0,
-            candidate_history_ns: 0,
-            hash_update_ns: 0,
+macro_rules! define_move_apply_timing {
+    ( $( $field:ident => $stat_field:ident ),* $(,)? ) => {
+        pub struct MoveApplyTiming {
+            $(pub $field: u64,)*
         }
-    }
+
+        impl MoveApplyTiming {
+            #[must_use]
+            pub const fn zero() -> Self {
+                Self {
+                    $($field: 0,)*
+                }
+            }
+        }
+    };
 }
 
-fn duration_to_ns(duration: std::time::Duration) -> u64 {
-    u64::try_from(duration.as_nanos()).unwrap_or(u64::MAX)
-}
+crate::for_each_move_apply_timing!(define_move_apply_timing);
+
+#[derive(Clone)]
 pub struct GomokuGameState {
     pub board: Vec<u8>,
     pub bitboard: Bitboard,
@@ -86,7 +77,7 @@ impl GomokuGameState {
             proximity_kernel,
             proximity_scale,
             positional_bonus,
-            proximity_maps: Self::make_proximity_maps(board_size),
+            proximity_maps: [Vec::new(), Vec::new()],
         };
         state.rebuild_hashes(current_player);
         state.threat_index.initialize_from_board(&state.board);
@@ -98,7 +89,7 @@ impl GomokuGameState {
 
     #[inline]
     const fn board_index(&self, r: usize, c: usize) -> usize {
-        r * self.board_size + c
+        board_index(self.board_size, r, c)
     }
 
     pub(crate) fn rebuild_candidate_moves(&mut self, workspace: &mut BitboardWorkspace) {
@@ -188,6 +179,18 @@ impl GomokuGameState {
     }
 }
 
+fn record_duration_ns<F: FnOnce()>(field: &mut u64, f: F) {
+    let start = Instant::now();
+    f();
+    *field = duration_to_ns(start.elapsed());
+}
+
+fn record_duration_add_ns<F: FnOnce()>(field: &mut u64, f: F) {
+    let start = Instant::now();
+    f();
+    *field = field.saturating_add(duration_to_ns(start.elapsed()));
+}
+
 impl GomokuGameState {
     fn collect_empty_cells<I>(&self, window_indices: I) -> HashSet<Coord>
     where
@@ -219,62 +222,60 @@ impl GomokuGameState {
     pub fn make_move_with_timing(&mut self, mov: Coord, player: u8) -> MoveApplyTiming {
         let (r, c) = mov;
         let mut timing = MoveApplyTiming::zero();
-        let board_start = Instant::now();
-        let board_idx = self.board_index(r, c);
-        self.board[board_idx] = player;
-        timing.board_update_ns = duration_to_ns(board_start.elapsed());
-        let bitboard_start = Instant::now();
-        self.bitboard.set(r, c, player);
-        timing.bitboard_update_ns = duration_to_ns(bitboard_start.elapsed());
+        record_duration_ns(&mut timing.board_update_ns, || {
+            let board_idx = self.board_index(r, c);
+            self.board[board_idx] = player;
+        });
+        record_duration_ns(&mut timing.bitboard_update_ns, || {
+            self.bitboard.set(r, c, player);
+        });
         self.apply_proximity_delta(mov, player, 1.0);
-        let threat_start = Instant::now();
-        self.threat_index.update_on_move(mov, player);
-        timing.threat_index_update_ns = duration_to_ns(threat_start.elapsed());
+        record_duration_ns(&mut timing.threat_index_update_ns, || {
+            self.threat_index.update_on_move(mov, player);
+        });
         let mut newly_added_candidates = self.bitboard.empty_mask();
-        let candidate_remove_start = Instant::now();
-        self.bitboard
-            .clear_in(&mut self.candidate_moves, r, c);
-        timing.candidate_remove_ns = duration_to_ns(candidate_remove_start.elapsed());
-        let candidate_neighbor_start = Instant::now();
         let mut neighbor_coords = Vec::new();
-        let row_start = r.saturating_sub(1);
-        let row_end = (r + 1).min(self.board_size - 1);
-        let col_start = c.saturating_sub(1);
-        let col_end = (c + 1).min(self.board_size - 1);
-        for nr in row_start..=row_end {
-            for nc in col_start..=col_end {
-                if self.board[self.board_index(nr, nc)] == 0 {
-                    neighbor_coords.push((nr, nc));
+        record_duration_ns(&mut timing.candidate_remove_ns, || {
+            self.bitboard.clear_in(&mut self.candidate_moves, r, c);
+        });
+        record_duration_ns(&mut timing.candidate_neighbor_ns, || {
+            let row_start = r.saturating_sub(1);
+            let row_end = (r + 1).min(self.board_size - 1);
+            let col_start = c.saturating_sub(1);
+            let col_end = (c + 1).min(self.board_size - 1);
+            for nr in row_start..=row_end {
+                for nc in col_start..=col_end {
+                    if self.board[self.board_index(nr, nc)] == 0 {
+                        neighbor_coords.push((nr, nc));
+                    }
                 }
             }
-        }
-        timing.candidate_neighbor_ns = duration_to_ns(candidate_neighbor_start.elapsed());
+        });
         let mut candidate_insert_ns = 0u64;
         let mut candidate_newly_added_ns = 0u64;
         for coord in neighbor_coords {
             let (word_idx, mask) = self.bitboard.coord_to_bit(coord.0, coord.1);
-            let insert_start = Instant::now();
-            let inserted = self.candidate_moves[word_idx] & mask == 0;
-            self.candidate_moves[word_idx] |= mask;
-            candidate_insert_ns =
-                candidate_insert_ns.saturating_add(duration_to_ns(insert_start.elapsed()));
+            let mut inserted = false;
+            record_duration_add_ns(&mut candidate_insert_ns, || {
+                inserted = self.candidate_moves[word_idx] & mask == 0;
+                self.candidate_moves[word_idx] |= mask;
+            });
             if inserted {
-                let newly_added_start = Instant::now();
-                newly_added_candidates[word_idx] |= mask;
-                candidate_newly_added_ns = candidate_newly_added_ns
-                    .saturating_add(duration_to_ns(newly_added_start.elapsed()));
+                record_duration_add_ns(&mut candidate_newly_added_ns, || {
+                    newly_added_candidates[word_idx] |= mask;
+                });
             }
         }
         timing.candidate_insert_ns = candidate_insert_ns;
         timing.candidate_newly_added_ns = candidate_newly_added_ns;
-        let candidate_history_start = Instant::now();
-        self.candidate_move_history
-            .push((mov, newly_added_candidates));
-        timing.candidate_history_ns = duration_to_ns(candidate_history_start.elapsed());
-        let hash_start = Instant::now();
-        self.hash ^= self.hasher.get_hash(r, c, player as usize);
-        self.hash ^= self.hasher.side_to_move_hash;
-        timing.hash_update_ns = duration_to_ns(hash_start.elapsed());
+        record_duration_ns(&mut timing.candidate_history_ns, || {
+            self.candidate_move_history
+                .push((mov, newly_added_candidates));
+        });
+        record_duration_ns(&mut timing.hash_update_ns, || {
+            self.hash ^= self.hasher.get_hash(r, c, player as usize);
+            self.hash ^= self.hasher.side_to_move_hash;
+        });
         timing
     }
 
@@ -335,7 +336,7 @@ impl GomokuGameState {
         if !threat_moves.is_empty() {
             return self.score_and_sort_moves(player, &threat_moves, score_buffer);
         }
-        let (empty_bits, _, _, _, _) = workspace.pads_mut();
+        let (empty_bits, ..) = workspace.pads_mut();
         self.bitboard.empty_into(empty_bits);
         if Bitboard::is_all_zeros(empty_bits) {
             return Vec::new();

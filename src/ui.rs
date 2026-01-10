@@ -14,12 +14,10 @@ use parking_lot::RwLock;
 
 use crate::{
     config::Config,
+    game_state::{GomokuGameState, ZobristHasher},
     pns::{NodeTable, ParallelSolver, SearchParams, TranspositionTable},
+    utils::board_index,
 };
-
-const fn board_index(board_size: usize, r: usize, c: usize) -> usize {
-    r * board_size + c
-}
 
 pub fn print_board(board: &[u8], board_size: usize) {
     print!("  ");
@@ -117,8 +115,7 @@ fn ai_turn(
     } else {
         println!("程序正在思考...");
         let params = SearchParams::new(board_size, win_len, num_threads);
-        let (best_move, new_tt, new_node_table) =
-            ParallelSolver::find_best_move_with_tt_and_stop(
+        let (best_move, new_tt, new_node_table) = ParallelSolver::find_best_move_with_tt_and_stop(
             board.to_vec(),
             params,
             verbose,
@@ -140,7 +137,7 @@ fn ai_turn(
     }
     println!("程序选择落子于: {mov:?}");
     board[board_index(board_size, mov.0, mov.1)] = 1;
-    if check_win(board, board_size, win_len, num_threads, 1) {
+    if check_win(board, board_size, win_len, 1) {
         println!("\n最终棋盘:");
         print_board(board, board_size);
         println!("程序获胜");
@@ -229,13 +226,8 @@ fn read_line_with_exit(exit_flag: &AtomicBool) -> Result<String, InputError> {
     }
 }
 
-fn check_win(
-    board: &[u8],
-    board_size: usize,
-    win_len: usize,
-    num_threads: usize,
-    player: u8,
-) -> bool {
-    let solver = ParallelSolver::new(board.to_vec(), board_size, win_len, Some(1), num_threads);
-    solver.game_state().check_win(player)
+fn check_win(board: &[u8], board_size: usize, win_len: usize, player: u8) -> bool {
+    let hasher = Arc::new(ZobristHasher::new(board_size));
+    let game_state = GomokuGameState::new(board.to_vec(), board_size, hasher, 1, win_len);
+    game_state.check_win(player)
 }

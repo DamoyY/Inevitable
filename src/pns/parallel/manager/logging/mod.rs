@@ -86,7 +86,7 @@ fn write_log(
         format_sci_u64(stats.node_table_hits),
         format_sci_u64(stats.nodes_created),
     ];
-    for value in timing_stats.csv_values() {
+    for &value in timing_stats.csv_values() {
         fields.push(format_sci_f64(value));
     }
     fields.push(format_sci_u64(stats.depth_cutoffs));

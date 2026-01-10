@@ -1,7 +1,4 @@
-pub(super) fn to_f64(value: u64) -> f64 {
-    let value_u32 = u32::try_from(value).unwrap_or(u32::MAX);
-    f64::from(value_u32)
-}
+use super::super::stats_def::to_f64;
 
 fn trim_sci(value: String) -> String {
     if let Some(pos) = value.find('e') {

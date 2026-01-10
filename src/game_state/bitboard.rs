@@ -185,10 +185,8 @@ impl Bitboard {
         self.resize_target(target);
         target.copy_from_slice(source);
         for row in 0..self.size {
-            let bit_pos = row * self.size + col;
-            let word_idx = bit_pos / 64;
-            let bit_idx = bit_pos % 64;
-            target[word_idx] &= !(1u64 << bit_idx);
+            let (word_idx, mask) = self.coord_to_bit(row, col);
+            target[word_idx] &= !mask;
         }
     }
 
@@ -223,22 +221,25 @@ impl Bitboard {
         self.copy_and_clear_col(bb, masked_not_right, size - 1);
         self.resize_target(target);
         target.copy_from_slice(bb);
-        self.shift_right_into(masked_not_left, temp, 1);
-        Self::or_inplace(target, temp);
-        self.shift_left_into(masked_not_right, temp, 1);
-        Self::or_inplace(target, temp);
-        self.shift_right_into(bb, temp, size);
-        Self::or_inplace(target, temp);
-        self.shift_left_into(bb, temp, size);
-        Self::or_inplace(target, temp);
-        self.shift_right_into(masked_not_left, temp, size + 1);
-        Self::or_inplace(target, temp);
-        self.shift_right_into(masked_not_right, temp, size - 1);
-        Self::or_inplace(target, temp);
-        self.shift_left_into(masked_not_left, temp, size - 1);
-        Self::or_inplace(target, temp);
-        self.shift_left_into(masked_not_right, temp, size + 1);
-        Self::or_inplace(target, temp);
+        let sources: [&[u64]; 3] = [bb, masked_not_left, masked_not_right];
+        let ops = [
+            (1usize, false, 1usize),
+            (2usize, true, 1usize),
+            (0usize, false, size),
+            (0usize, true, size),
+            (1usize, false, size + 1),
+            (2usize, false, size - 1),
+            (1usize, true, size - 1),
+            (2usize, true, size + 1),
+        ];
+        for (src_idx, shift_left, n) in ops {
+            if shift_left {
+                self.shift_left_into(sources[src_idx], temp, n);
+            } else {
+                self.shift_right_into(sources[src_idx], temp, n);
+            }
+            Self::or_inplace(target, temp);
+        }
         self.apply_mask(target);
     }
 

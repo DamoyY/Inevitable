@@ -4,7 +4,7 @@ use serde::Serialize;
 
 use crate::{alloc_stats::AllocTimingSnapshot, game_state::MoveApplyTiming};
 
-fn to_f64(value: u64) -> f64 {
+pub fn to_f64(value: u64) -> f64 {
     let value_u32 = u32::try_from(value).unwrap_or(u32::MAX);
     f64::from(value_u32)
 }
@@ -17,11 +17,18 @@ fn avg_us(total_ns: u64, count: u64) -> f64 {
     }
 }
 
+macro_rules! add_move_apply_timing {
+    ( $( $field:ident => $stat_field:ident ),* $(,)? ) => {
+        pub const fn add_move_apply_timing(&mut self, timing: &MoveApplyTiming) {
+            $(self.$stat_field = self.$stat_field.wrapping_add(timing.$field);)*
+        }
+    };
+}
+
 macro_rules! define_metrics {
     (
         counts: { $( $cname:ident => $cdesc:expr ),* $(,)? }
         timings: { $( $tname:ident => $tdesc:expr ),* $(,)? }
-        move_apply: { $( $tfield:ident <= $mfield:ident ),* $(,)? }
         timing_log: { $( $lname:ident => ($ldesc:expr, $calc:expr) ),* $(,)? }
     ) => {
         pub struct TreeStatsAtomic {
@@ -89,13 +96,11 @@ macro_rules! define_metrics {
         }
 
         impl TreeStatsAccumulator {
-            pub const fn add_move_apply_timing(&mut self, timing: &MoveApplyTiming) {
-                $(self.$tfield = self.$tfield.wrapping_add(timing.$mfield);)*
-            }
+            crate::for_each_move_apply_timing!(add_move_apply_timing);
         }
 
         pub struct TimingStats {
-            $(pub $lname: f64,)*
+            values: Vec<f64>,
         }
 
         impl TimingStats {
@@ -104,9 +109,8 @@ macro_rules! define_metrics {
                 snapshot: &TreeStatsSnapshot,
                 alloc_timing: AllocTimingSnapshot,
             ) -> Self {
-                Self {
-                    $($lname: ($calc)(snapshot, alloc_timing),)*
-                }
+                let values = vec![$(($calc)(snapshot, alloc_timing),)*];
+                Self { values }
             }
 
             pub const fn csv_headers() -> &'static [&'static str] {
@@ -114,8 +118,8 @@ macro_rules! define_metrics {
             }
 
             #[must_use]
-            pub fn csv_values(&self) -> Vec<f64> {
-                vec![$(self.$lname,)*]
+            pub fn csv_values(&self) -> &[f64] {
+                &self.values
             }
         }
     };
@@ -154,17 +158,6 @@ define_metrics! {
         children_lock_time_ns => "子节点锁耗时",
         node_table_lookup_time_ns => "NodeTable检索耗时",
         node_table_write_time_ns => "NodeTable写入耗时",
-    }
-    move_apply: {
-        board_update_time_ns <= board_update_ns,
-        bitboard_update_time_ns <= bitboard_update_ns,
-        threat_index_update_time_ns <= threat_index_update_ns,
-        candidate_remove_time_ns <= candidate_remove_ns,
-        candidate_neighbor_time_ns <= candidate_neighbor_ns,
-        candidate_insert_time_ns <= candidate_insert_ns,
-        candidate_newly_added_time_ns <= candidate_newly_added_ns,
-        candidate_history_time_ns <= candidate_history_ns,
-        hash_update_time_ns <= hash_update_ns,
     }
     timing_log: {
         branch => ("平均分支数", |snapshot: &TreeStatsSnapshot, _| {

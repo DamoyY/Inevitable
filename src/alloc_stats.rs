@@ -7,6 +7,8 @@ use std::{
 
 use mimalloc::MiMalloc;
 
+use crate::utils::duration_to_ns;
+
 static ALLOC_TIME_NS: AtomicU64 = AtomicU64::new(0);
 static DEALLOC_TIME_NS: AtomicU64 = AtomicU64::new(0);
 static REALLOC_TIME_NS: AtomicU64 = AtomicU64::new(0);
@@ -78,11 +80,6 @@ pub fn alloc_timing_snapshot() -> AllocTimingSnapshot {
 
 fn tracking_enabled() -> bool {
     ALLOC_TRACKING_DEPTH.with(|depth| depth.get() > 0)
-}
-
-fn duration_to_ns(duration: Duration) -> u64 {
-    let nanos = duration.as_nanos();
-    u64::try_from(nanos).unwrap_or(u64::MAX)
 }
 
 fn record_alloc_time(target: &AtomicU64, elapsed: Duration) {

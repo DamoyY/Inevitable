@@ -1,11 +1,14 @@
 use std::collections::HashMap;
 
+use crate::utils::board_index;
+
 mod buckets;
 mod window;
 
 use buckets::PatternBuckets;
 pub use window::Window;
 
+#[derive(Clone)]
 pub struct ThreatIndex {
     pub board_size: usize,
     pub win_len: usize,
@@ -90,7 +93,7 @@ impl ThreatIndex {
             window.empty_cells.clear();
 
             for &(r, c) in &window.coords {
-                let player = board[r * self.board_size + c];
+                let player = board[board_index(self.board_size, r, c)];
                 if player == 1 {
                     window.p1_count += 1;
                 } else if player == 2 {
@@ -100,7 +103,7 @@ impl ThreatIndex {
             window.empty_count = win_len - window.p1_count - window.p2_count;
 
             for &(r, c) in &window.coords {
-                if board[r * self.board_size + c] == 0 {
+                if board[board_index(self.board_size, r, c)] == 0 {
                     window.empty_cells.insert((r, c));
                 }
             }

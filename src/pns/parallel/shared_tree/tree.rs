@@ -9,10 +9,11 @@ use std::{
 use parking_lot::RwLock;
 
 use super::{
-    super::node::{ChildRef, NodeRef, ParallelNode},
-    super::TreeStatsAtomic,
-    NodeTable,
-    TranspositionTable,
+    super::{
+        TreeStatsAtomic,
+        node::{ChildRef, NodeRef, ParallelNode},
+    },
+    NodeTable, TranspositionTable,
 };
 
 pub struct SharedTree {
@@ -26,6 +27,24 @@ pub struct SharedTree {
 }
 
 impl SharedTree {
+    fn push_unvisited_children<F>(
+        node: &NodeRef,
+        visited: &mut HashSet<*const ParallelNode>,
+        mut push: F,
+    ) where
+        F: FnMut(NodeRef),
+    {
+        let children_guard = node.children.read();
+        if let Some(children) = children_guard.as_ref() {
+            for child in children {
+                let ptr = Arc::as_ptr(&child.node);
+                if visited.insert(ptr) {
+                    push(Arc::clone(&child.node));
+                }
+            }
+        }
+    }
+
     #[must_use]
     pub fn new(
         root_player: u8,
@@ -125,15 +144,9 @@ impl SharedTree {
                 }
             }
 
-            let children_guard = node.children.read();
-            if let Some(children) = children_guard.as_ref() {
-                for child in children {
-                    let ptr = Arc::as_ptr(&child.node);
-                    if visited.insert(ptr) {
-                        queue.push_back(Arc::clone(&child.node));
-                    }
-                }
-            }
+            Self::push_unvisited_children(&node, &mut visited, |child| {
+                queue.push_back(child);
+            });
         }
 
         let mut stack = Vec::new();
@@ -150,15 +163,9 @@ impl SharedTree {
             }
 
             stack.push((Arc::clone(&node), true));
-            let children_guard = node.children.read();
-            if let Some(children) = children_guard.as_ref() {
-                for child in children {
-                    let ptr = Arc::as_ptr(&child.node);
-                    if visited.insert(ptr) {
-                        stack.push((Arc::clone(&child.node), false));
-                    }
-                }
-            }
+            Self::push_unvisited_children(&node, &mut visited, |child| {
+                stack.push((child, false));
+            });
         }
 
         for node in postorder {

@@ -12,6 +12,7 @@ struct BucketNode {
     bucket: usize,
 }
 
+#[derive(Clone)]
 pub(super) struct PatternBuckets {
     win_len: usize,
     window_count: usize,

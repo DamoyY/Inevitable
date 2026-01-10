@@ -30,54 +30,43 @@ impl SharedTree {
             return;
         }
         let is_or_node = node.is_or_node();
-        if is_or_node {
-            let mut min_pn = u64::MAX;
-            let mut sum_dn = 0u64;
-            let mut min_proven_win_len = u64::MAX;
-            for child in children {
-                let cpn = child.node.get_pn();
-                let cdn = child.node.get_dn();
-                let cwl = child.node.get_win_len();
-                if cpn < min_pn {
-                    min_pn = cpn;
-                }
-                sum_dn = sum_dn.saturating_add(cdn);
-                if cpn == 0 && cwl < min_proven_win_len {
-                    min_proven_win_len = cwl;
-                }
+        let mut pn_min = u64::MAX;
+        let mut pn_sum = 0u64;
+        let mut dn_min = u64::MAX;
+        let mut dn_sum = 0u64;
+        let mut min_proven_win_len = u64::MAX;
+        let mut max_proven_win_len = 0u64;
+        let mut all_children_proven = true;
+        for child in children {
+            let cpn = child.node.get_pn();
+            let cdn = child.node.get_dn();
+            let cwl = child.node.get_win_len();
+            pn_min = pn_min.min(cpn);
+            pn_sum = pn_sum.saturating_add(cpn);
+            dn_min = dn_min.min(cdn);
+            dn_sum = dn_sum.saturating_add(cdn);
+            if cpn == 0 {
+                min_proven_win_len = min_proven_win_len.min(cwl);
+                max_proven_win_len = max_proven_win_len.max(cwl);
+            } else {
+                all_children_proven = false;
             }
-            node.set_pn(min_pn);
-            node.set_dn(sum_dn);
+        }
+        if is_or_node {
+            node.set_pn(pn_min);
+            node.set_dn(dn_sum);
             if min_proven_win_len < u64::MAX {
                 node.set_win_len(1u64.saturating_add(min_proven_win_len));
             } else {
                 node.set_win_len(u64::MAX);
             }
         } else {
-            let mut sum_pn = 0u64;
-            let mut min_dn = u64::MAX;
-            let mut all_proven = true;
-            let mut max_win_len = 0u64;
-            for child in children {
-                let cpn = child.node.get_pn();
-                let cdn = child.node.get_dn();
-                let cwl = child.node.get_win_len();
-                sum_pn = sum_pn.saturating_add(cpn);
-                if cdn < min_dn {
-                    min_dn = cdn;
-                }
-                if cpn != 0 {
-                    all_proven = false;
-                } else if cwl > max_win_len {
-                    max_win_len = cwl;
-                }
-            }
-            node.set_pn(sum_pn);
-            node.set_dn(min_dn);
-            if min_dn == 0 {
+            node.set_pn(pn_sum);
+            node.set_dn(dn_min);
+            if dn_min == 0 {
                 node.set_win_len(u64::MAX);
-            } else if all_proven {
-                node.set_win_len(1u64.saturating_add(max_win_len));
+            } else if all_children_proven {
+                node.set_win_len(1u64.saturating_add(max_proven_win_len));
             } else {
                 node.set_win_len(u64::MAX);
             }

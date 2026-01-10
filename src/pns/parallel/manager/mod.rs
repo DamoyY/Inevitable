@@ -299,12 +299,3 @@ impl ParallelSolver {
         self.win_len
     }
 }
-impl Clone for GomokuGameState {
-    fn clone(&self) -> Self {
-        let hasher = Arc::clone(&self.hasher);
-        let mut state =
-            Self::new(self.board.clone(), self.board_size, hasher, 1, self.win_len);
-        state.hash = self.hash;
-        state
-    }
-}
