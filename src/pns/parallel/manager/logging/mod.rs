@@ -44,8 +44,10 @@ fn write_csv_header(writer: &mut impl Write) -> io::Result<()> {
         "回合,深度,用时,迭代次数,扩展节点数,TranspositionTable大小,TranspositionTable命中率,\
          TranspositionTable写入数,NodeTable大小,NodeTable命中率,NodeTable节点数,NodeTable写入数,\
          平均分支数,平均走子耗时,基础棋盘状态更新耗时,位棋盘更新耗时,威胁索引增量更新耗时,\
-         候选着法维护耗时,Zobrist哈希增量更新耗时,平均撤销耗时,平均哈希耗时,平均NodeTable写入耗时,\
-         平均NodeTable检索耗时,平均评估耗时,平均其他耗时,评估均耗时,深度截断数,提前剪枝数"
+         候选着法移除耗时,邻居空位计算耗时,候选着法更新耗时,新增候选着法记录耗时,\
+         候选着法历史保存耗时,Zobrist哈希增量更新耗时,平均撤销耗时,平均哈希耗时,平均NodeTable写入耗时,\
+         平均NodeTable检索耗时,每扩展评估总耗时,平均其他耗时,单次评估函数耗时,深度截断数,\
+         提前剪枝数"
     )
 }
 
@@ -68,7 +70,8 @@ fn write_log(
         writer,
         "{turn},{depth},{elapsed},{iterations},{expansions},{tt_size},{tt_hit},{tt_stores},\
          {node_table_size},{node_hit_rate},{node_hits},{nodes_created},{branch},{movegen},\
-         {board_update},{bitboard_update},{threat_update},{candidate_update},{hash_update},\
+         {board_update},{bitboard_update},{threat_update},{candidate_remove},{candidate_neighbor},\
+         {candidate_insert},{candidate_newly_added},{candidate_history},{hash_update},\
          {move_undo},{hash},{node_table_write},{node_table_lookup},{eval_per_expand},\
          {expand_other},{eval_avg},{depth_cutoffs},{early_cutoffs}",
         depth = format_sci_usize(depth),
@@ -87,7 +90,11 @@ fn write_log(
         board_update = format_sci_f64(timing_stats.board_update_us),
         bitboard_update = format_sci_f64(timing_stats.bitboard_update_us),
         threat_update = format_sci_f64(timing_stats.threat_index_update_us),
-        candidate_update = format_sci_f64(timing_stats.candidate_update_us),
+        candidate_remove = format_sci_f64(timing_stats.candidate_remove_us),
+        candidate_neighbor = format_sci_f64(timing_stats.candidate_neighbor_us),
+        candidate_insert = format_sci_f64(timing_stats.candidate_insert_us),
+        candidate_newly_added = format_sci_f64(timing_stats.candidate_newly_added_us),
+        candidate_history = format_sci_f64(timing_stats.candidate_history_us),
         hash_update = format_sci_f64(timing_stats.hash_update_us),
         move_undo = format_sci_f64(timing_stats.move_undo_us),
         hash = format_sci_f64(timing_stats.hash_us),

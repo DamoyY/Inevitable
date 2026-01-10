@@ -76,7 +76,11 @@ pub(super) fn avg_expand_other_us(input: &TimingInput) -> f64 {
         .saturating_sub(input.board_update_ns)
         .saturating_sub(input.bitboard_update_ns)
         .saturating_sub(input.threat_index_update_ns)
-        .saturating_sub(input.candidate_update_ns)
+        .saturating_sub(input.candidate_remove_ns)
+        .saturating_sub(input.candidate_neighbor_ns)
+        .saturating_sub(input.candidate_insert_ns)
+        .saturating_sub(input.candidate_newly_added_ns)
+        .saturating_sub(input.candidate_history_ns)
         .saturating_sub(input.hash_update_ns)
         .saturating_sub(input.move_undo_ns)
         .saturating_sub(input.hash_ns)
@@ -94,7 +98,11 @@ pub(super) struct TimingInput {
     pub board_update_ns: u64,
     pub bitboard_update_ns: u64,
     pub threat_index_update_ns: u64,
-    pub candidate_update_ns: u64,
+    pub candidate_remove_ns: u64,
+    pub candidate_neighbor_ns: u64,
+    pub candidate_insert_ns: u64,
+    pub candidate_newly_added_ns: u64,
+    pub candidate_history_ns: u64,
     pub hash_update_ns: u64,
     pub move_undo_ns: u64,
     pub hash_ns: u64,
@@ -110,7 +118,11 @@ pub(super) struct TimingStats {
     pub board_update_us: f64,
     pub bitboard_update_us: f64,
     pub threat_index_update_us: f64,
-    pub candidate_update_us: f64,
+    pub candidate_remove_us: f64,
+    pub candidate_neighbor_us: f64,
+    pub candidate_insert_us: f64,
+    pub candidate_newly_added_us: f64,
+    pub candidate_history_us: f64,
     pub hash_update_us: f64,
     pub move_undo_us: f64,
     pub hash_us: f64,
@@ -151,7 +163,11 @@ pub(super) fn calc_timing_stats(input: &TimingInput) -> TimingStats {
         board_update_us: avg_us(input.board_update_ns, input.expansions),
         bitboard_update_us: avg_us(input.bitboard_update_ns, input.expansions),
         threat_index_update_us: avg_us(input.threat_index_update_ns, input.expansions),
-        candidate_update_us: avg_us(input.candidate_update_ns, input.expansions),
+        candidate_remove_us: avg_us(input.candidate_remove_ns, input.expansions),
+        candidate_neighbor_us: avg_us(input.candidate_neighbor_ns, input.expansions),
+        candidate_insert_us: avg_us(input.candidate_insert_ns, input.expansions),
+        candidate_newly_added_us: avg_us(input.candidate_newly_added_ns, input.expansions),
+        candidate_history_us: avg_us(input.candidate_history_ns, input.expansions),
         hash_update_us: avg_us(input.hash_update_ns, input.expansions),
         move_undo_us: avg_us(input.move_undo_ns, input.expansions),
         hash_us: avg_us(input.hash_ns, input.expansions),

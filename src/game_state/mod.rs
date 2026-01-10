@@ -13,7 +13,11 @@ pub struct MoveApplyTiming {
     pub board_update_ns: u64,
     pub bitboard_update_ns: u64,
     pub threat_index_update_ns: u64,
-    pub candidate_update_ns: u64,
+    pub candidate_remove_ns: u64,
+    pub candidate_neighbor_ns: u64,
+    pub candidate_insert_ns: u64,
+    pub candidate_newly_added_ns: u64,
+    pub candidate_history_ns: u64,
     pub hash_update_ns: u64,
 }
 
@@ -24,7 +28,11 @@ impl MoveApplyTiming {
             board_update_ns: 0,
             bitboard_update_ns: 0,
             threat_index_update_ns: 0,
-            candidate_update_ns: 0,
+            candidate_remove_ns: 0,
+            candidate_neighbor_ns: 0,
+            candidate_insert_ns: 0,
+            candidate_newly_added_ns: 0,
+            candidate_history_ns: 0,
             hash_update_ns: 0,
         }
     }
@@ -206,17 +214,33 @@ impl GomokuGameState {
         let threat_start = Instant::now();
         self.threat_index.update_on_move(mov, player);
         timing.threat_index_update_ns = duration_to_ns(threat_start.elapsed());
-        let candidate_start = Instant::now();
         let mut newly_added_candidates = HashSet::new();
+        let candidate_remove_start = Instant::now();
         self.candidate_moves.remove(&mov);
-        for coord in self.neighbor_coords() {
-            if self.candidate_moves.insert(coord) {
+        timing.candidate_remove_ns = duration_to_ns(candidate_remove_start.elapsed());
+        let candidate_neighbor_start = Instant::now();
+        let neighbor_coords = self.neighbor_coords();
+        timing.candidate_neighbor_ns = duration_to_ns(candidate_neighbor_start.elapsed());
+        let mut candidate_insert_ns = 0u64;
+        let mut candidate_newly_added_ns = 0u64;
+        for coord in neighbor_coords {
+            let insert_start = Instant::now();
+            let inserted = self.candidate_moves.insert(coord);
+            candidate_insert_ns =
+                candidate_insert_ns.saturating_add(duration_to_ns(insert_start.elapsed()));
+            if inserted {
+                let newly_added_start = Instant::now();
                 newly_added_candidates.insert(coord);
+                candidate_newly_added_ns = candidate_newly_added_ns
+                    .saturating_add(duration_to_ns(newly_added_start.elapsed()));
             }
         }
+        timing.candidate_insert_ns = candidate_insert_ns;
+        timing.candidate_newly_added_ns = candidate_newly_added_ns;
+        let candidate_history_start = Instant::now();
         self.candidate_move_history
             .push((mov, newly_added_candidates));
-        timing.candidate_update_ns = duration_to_ns(candidate_start.elapsed());
+        timing.candidate_history_ns = duration_to_ns(candidate_history_start.elapsed());
         let hash_start = Instant::now();
         self.hash ^= self.hasher.get_hash(r, c, player as usize);
         self.hash ^= self.hasher.side_to_move_hash;

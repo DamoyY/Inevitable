@@ -61,8 +61,25 @@ impl SharedTree {
             .load(Ordering::Relaxed)
     }
 
-    pub fn get_candidate_update_time_ns(&self) -> u64 {
-        self.total_candidate_update_time_ns.load(Ordering::Relaxed)
+    pub fn get_candidate_remove_time_ns(&self) -> u64 {
+        self.total_candidate_remove_time_ns.load(Ordering::Relaxed)
+    }
+
+    pub fn get_candidate_neighbor_time_ns(&self) -> u64 {
+        self.total_candidate_neighbor_time_ns.load(Ordering::Relaxed)
+    }
+
+    pub fn get_candidate_insert_time_ns(&self) -> u64 {
+        self.total_candidate_insert_time_ns.load(Ordering::Relaxed)
+    }
+
+    pub fn get_candidate_newly_added_time_ns(&self) -> u64 {
+        self.total_candidate_newly_added_time_ns
+            .load(Ordering::Relaxed)
+    }
+
+    pub fn get_candidate_history_time_ns(&self) -> u64 {
+        self.total_candidate_history_time_ns.load(Ordering::Relaxed)
     }
 
     pub fn get_hash_update_time_ns(&self) -> u64 {

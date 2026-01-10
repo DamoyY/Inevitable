@@ -47,8 +47,18 @@ impl SharedTree {
                 move_timing.threat_index_update_ns,
                 Ordering::Relaxed,
             );
-            self.total_candidate_update_time_ns
-                .fetch_add(move_timing.candidate_update_ns, Ordering::Relaxed);
+            self.total_candidate_remove_time_ns
+                .fetch_add(move_timing.candidate_remove_ns, Ordering::Relaxed);
+            self.total_candidate_neighbor_time_ns
+                .fetch_add(move_timing.candidate_neighbor_ns, Ordering::Relaxed);
+            self.total_candidate_insert_time_ns
+                .fetch_add(move_timing.candidate_insert_ns, Ordering::Relaxed);
+            self.total_candidate_newly_added_time_ns.fetch_add(
+                move_timing.candidate_newly_added_ns,
+                Ordering::Relaxed,
+            );
+            self.total_candidate_history_time_ns
+                .fetch_add(move_timing.candidate_history_ns, Ordering::Relaxed);
             self.total_hash_update_time_ns
                 .fetch_add(move_timing.hash_update_ns, Ordering::Relaxed);
             let pos_hash_start = Instant::now();
