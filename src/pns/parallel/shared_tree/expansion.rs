@@ -11,7 +11,12 @@ use crate::pns::parallel::{
 impl SharedTree {
     pub fn expand_node(&self, node: &NodeRef, ctx: &mut ThreadLocalContext) -> bool {
         let expand_start = Instant::now();
+        let children_lock_start = Instant::now();
         let mut write_guard = node.children.write();
+        self.total_children_lock_time_ns.fetch_add(
+            duration_to_ns(children_lock_start.elapsed()),
+            Ordering::Relaxed,
+        );
         if write_guard.is_some() {
             return false;
         }

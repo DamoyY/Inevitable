@@ -45,9 +45,9 @@ fn write_csv_header(writer: &mut impl Write) -> io::Result<()> {
          TranspositionTable写入数,NodeTable大小,NodeTable命中率,NodeTable节点数,NodeTable写入数,\
          平均分支数,平均走子耗时,基础棋盘状态更新耗时,位棋盘更新耗时,威胁索引增量更新耗时,\
          候选着法移除耗时,邻居空位计算耗时,候选着法更新耗时,新增候选着法记录耗时,\
-         候选着法历史保存耗时,Zobrist哈希增量更新耗时,平均撤销耗时,平均哈希耗时,平均NodeTable写入耗时,\
-         平均NodeTable检索耗时,每扩展评估总耗时,平均其他耗时,单次评估函数耗时,深度截断数,\
-         提前剪枝数"
+         候选着法历史保存耗时,Zobrist哈希增量更新耗时,平均撤销耗时,平均哈希耗时,\
+         平均NodeTable写入耗时,平均NodeTable检索耗时,每扩展评估总耗时,平均子节点锁耗时,\
+         平均其他耗时,单次评估函数耗时,深度截断数,提前剪枝数"
     )
 }
 
@@ -71,8 +71,8 @@ fn write_log(
         "{turn},{depth},{elapsed},{iterations},{expansions},{tt_size},{tt_hit},{tt_stores},\
          {node_table_size},{node_hit_rate},{node_hits},{nodes_created},{branch},{movegen},\
          {board_update},{bitboard_update},{threat_update},{candidate_remove},{candidate_neighbor},\
-         {candidate_insert},{candidate_newly_added},{candidate_history},{hash_update},\
-         {move_undo},{hash},{node_table_write},{node_table_lookup},{eval_per_expand},\
+         {candidate_insert},{candidate_newly_added},{candidate_history},{hash_update},{move_undo},\
+         {hash},{node_table_write},{node_table_lookup},{eval_per_expand},{children_lock},\
          {expand_other},{eval_avg},{depth_cutoffs},{early_cutoffs}",
         depth = format_sci_usize(depth),
         elapsed = format_sci_f64(elapsed_secs),
@@ -101,6 +101,7 @@ fn write_log(
         node_table_write = format_sci_f64(timing_stats.node_table_write_us),
         node_table_lookup = format_sci_f64(timing_stats.node_table_lookup_us),
         eval_per_expand = format_sci_f64(timing_stats.eval_us_per_expand),
+        children_lock = format_sci_f64(timing_stats.children_lock_us),
         expand_other = format_sci_f64(timing_stats.expand_other_us),
         eval_avg = format_sci_f64(timing_stats.eval_us),
         depth_cutoffs = format_sci_u64(snapshot.depth_cutoffs),
