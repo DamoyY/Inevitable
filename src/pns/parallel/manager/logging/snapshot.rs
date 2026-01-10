@@ -1,24 +1,22 @@
-use super::counters::LogCounters;
-use crate::pns::parallel::SharedTree;
+use crate::{
+    alloc_stats,
+    pns::parallel::{SharedTree, TreeStatsSnapshot},
+};
 
 pub(super) struct LogSnapshot {
-    pub(super) counters: LogCounters,
-    pub(super) tt_stores: u64,
+    pub(super) stats: TreeStatsSnapshot,
+    pub(super) alloc_free_ns: u64,
     pub(super) tt_size: usize,
     pub(super) node_table_size: usize,
     pub(super) depth_limit: Option<usize>,
-    pub(super) depth_cutoffs: u64,
-    pub(super) early_cutoffs: u64,
 }
 
 pub(super) fn capture_snapshot(tree: &SharedTree) -> LogSnapshot {
     LogSnapshot {
-        counters: LogCounters::from_tree(tree),
-        tt_stores: tree.get_tt_stores(),
+        stats: tree.stats_snapshot(),
+        alloc_free_ns: alloc_stats::alloc_free_time_ns(),
         tt_size: tree.get_tt_size(),
         node_table_size: tree.get_node_table_size(),
         depth_limit: tree.depth_limit,
-        depth_cutoffs: tree.get_depth_cutoffs(),
-        early_cutoffs: tree.get_early_cutoffs(),
     }
 }

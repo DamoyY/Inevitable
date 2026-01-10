@@ -6,7 +6,7 @@ use crate::pns::parallel::{context::ThreadLocalContext, node::ParallelNode};
 impl SharedTree {
     pub fn evaluate_node(&self, node: &ParallelNode, ctx: &ThreadLocalContext) {
         let start = Instant::now();
-        self.total_eval_calls.fetch_add(1, Ordering::Relaxed);
+        self.stats.eval_calls.fetch_add(1, Ordering::Relaxed);
         let tt_entry = self.lookup_tt(node.hash, node.player);
         if let Some(entry) = tt_entry
             && (entry.pn == 0 || entry.dn == 0)
@@ -14,7 +14,7 @@ impl SharedTree {
             node.set_pn(entry.pn);
             node.set_dn(entry.dn);
             node.set_win_len(entry.win_len);
-            self.total_eval_time_ns
+            self.stats.eval_time_ns
                 .fetch_add(duration_to_ns(start.elapsed()), Ordering::Relaxed);
             return;
         }
@@ -45,7 +45,7 @@ impl SharedTree {
         } else if let Some(limit) = self.depth_limit
             && node.depth >= limit
         {
-            self.total_depth_cutoffs.fetch_add(1, Ordering::Relaxed);
+            self.stats.depth_cutoffs.fetch_add(1, Ordering::Relaxed);
             node.set_depth_cutoff(true);
             node.set_is_depth_limited(true);
             node.set_pn(u64::MAX);
@@ -55,7 +55,7 @@ impl SharedTree {
             node.set_dn(entry.dn);
             node.set_win_len(entry.win_len);
         }
-        self.total_eval_time_ns
+        self.stats.eval_time_ns
             .fetch_add(duration_to_ns(start.elapsed()), Ordering::Relaxed);
     }
 }

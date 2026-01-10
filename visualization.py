@@ -1,15 +1,25 @@
 import os
 from datetime import datetime
-from numpy import arange, nan
+
+import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
-df = pd.read_csv("log.csv")
+head = pd.read_csv("log.csv", nrows=0)
+all_cols = list(head.columns)
+time_cols = [c for c in all_cols if "耗时" in str(c)]
+extra_cols = []
+if "回合" in all_cols:
+    extra_cols.append("回合")
+if "深度" in all_cols:
+    extra_cols.append("深度")
+usecols = time_cols + extra_cols
+df = pd.read_csv("log.csv", usecols=usecols)
 time_cols = [c for c in df.columns if "耗时" in str(c)]
-plot_df = df[time_cols].apply(pd.to_numeric, errors="coerce")
+plot_df = df[time_cols].apply(pd.to_numeric, errors="coerce", downcast="float")
 use_round_depth = "回合" in df.columns and "深度" in df.columns
 if use_round_depth:
-    x = arange(1, len(plot_df) + 1)
+    x = np.arange(1, len(plot_df) + 1)
     x_labels = (
         df["回合"].astype(str).str.strip()
         + "."
@@ -18,7 +28,7 @@ if use_round_depth:
 elif "深度" in df.columns:
     x = pd.to_numeric(df["深度"], errors="coerce")
 else:
-    x = arange(1, len(plot_df) + 1)
+    x = np.arange(1, len(plot_df) + 1)
 plt.rcParams["axes.unicode_minus"] = False
 plt.rcParams["font.sans-serif"] = ["Microsoft YaHei", "SimHei", "DejaVu Sans"]
 plt.rcParams["font.size"] = 20
@@ -32,26 +42,58 @@ fig, axes = plt.subplots(
 )
 base_colors = list(plt.get_cmap("tab20").colors)
 colors = [base_colors[i % len(base_colors)] for i in range(len(time_cols))]
-series = [plot_df[c].values for c in time_cols]
-total = plot_df.sum(axis=1).values
-axes[0].stackplot(
-    x, series, labels=time_cols, colors=colors, alpha=1.0, baseline="sym"
-)
+plot_filled = plot_df.fillna(0)
+series_values = plot_filled[time_cols].to_numpy()
+total = series_values.sum(axis=1)
+bottom = -total / 2
+for idx, col in enumerate(time_cols):
+    values = series_values[:, idx]
+    axes[0].bar(
+        x,
+        values,
+        bottom=bottom,
+        label=col,
+        color=colors[idx],
+        alpha=1.0,
+        width=0.95,
+    )
+    bottom = bottom + values
 axes[0].axhline(0, color="#000000", linewidth=1.5)
 axes[0].set_ylabel("耗时（μs）", fontsize=26)
 axes[0].set_ylim(-200, 200)
 axes[0].grid(True, alpha=0.25)
+handles, labels = axes[0].get_legend_handles_labels()
 fig.legend(
-    time_cols,
+    handles,
+    labels,
     loc="center left",
     bbox_to_anchor=(1.02, 0.5),
     frameon=False,
     fontsize=18,
 )
-total_safe = plot_df.sum(axis=1).replace(0, nan)
-percent_df = plot_df.div(total_safe, axis=0) * 100
-percent_series = [percent_df[c].values for c in time_cols]
-axes[1].stackplot(x, percent_series, colors=colors, alpha=1.0)
+total_safe = total.copy()
+total_safe[total_safe == 0] = np.nan
+percent_values = (
+    np.divide(
+        series_values,
+        total_safe[:, None],
+        out=np.zeros_like(series_values),
+        where=~np.isnan(total_safe)[:, None],
+    )
+    * 100
+)
+bottom = np.zeros(len(plot_df))
+for idx in range(percent_values.shape[1]):
+    values = percent_values[:, idx]
+    axes[1].bar(
+        x,
+        values,
+        bottom=bottom,
+        color=colors[idx],
+        alpha=1.0,
+        width=0.95,
+    )
+    bottom = bottom + values
 axes[1].set_ylabel("占比（%）", fontsize=26)
 axes[1].set_xlabel("回合-深度", fontsize=26)
 axes[1].set_ylim(0, 100)
@@ -69,10 +111,8 @@ for ax in axes:
     ax.tick_params(axis="y", labelsize=20)
 plt.tight_layout(rect=[0, 0, 1, 1])
 timestamp = datetime.now().strftime("%m%d%H%M")
-png_root, png_ext = os.path.splitext("耗时折线图")
-png_ext = png_ext or ".png"
 output_dir = "visualization"
 os.makedirs(output_dir, exist_ok=True)
-png_path = os.path.join(output_dir, f"{png_root}_{timestamp}{png_ext}")
+png_path = os.path.join(output_dir, f"{timestamp}.png")
 plt.savefig(png_path, bbox_inches="tight")
 plt.close()

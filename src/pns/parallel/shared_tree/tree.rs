@@ -2,7 +2,7 @@ use std::{
     collections::{HashMap, HashSet, VecDeque},
     sync::{
         Arc,
-        atomic::{AtomicBool, AtomicU64, Ordering},
+        atomic::{AtomicBool, Ordering},
     },
 };
 
@@ -10,6 +10,7 @@ use parking_lot::RwLock;
 
 use super::{
     super::node::{ChildRef, NodeRef, ParallelNode},
+    super::TreeStatsAtomic,
     NodeTable,
     TranspositionTable,
 };
@@ -21,35 +22,7 @@ pub struct SharedTree {
     pub depth_limit: Option<usize>,
     pub solved: AtomicBool,
     pub(super) stop_flag: Arc<AtomicBool>,
-    pub total_iterations: AtomicU64,
-    pub total_expansions: AtomicU64,
-    pub total_tt_lookups: AtomicU64,
-    pub total_tt_hits: AtomicU64,
-    pub total_tt_stores: AtomicU64,
-    pub total_eval_calls: AtomicU64,
-    pub total_eval_time_ns: AtomicU64,
-    pub total_expand_time_ns: AtomicU64,
-    pub total_movegen_time_ns: AtomicU64,
-    pub total_board_update_time_ns: AtomicU64,
-    pub total_bitboard_update_time_ns: AtomicU64,
-    pub total_threat_index_update_time_ns: AtomicU64,
-    pub total_candidate_remove_time_ns: AtomicU64,
-    pub total_candidate_neighbor_time_ns: AtomicU64,
-    pub total_candidate_insert_time_ns: AtomicU64,
-    pub total_candidate_newly_added_time_ns: AtomicU64,
-    pub total_candidate_history_time_ns: AtomicU64,
-    pub total_hash_update_time_ns: AtomicU64,
-    pub total_move_undo_time_ns: AtomicU64,
-    pub total_hash_time_ns: AtomicU64,
-    pub total_children_lock_time_ns: AtomicU64,
-    pub total_node_table_lookup_time_ns: AtomicU64,
-    pub total_node_table_write_time_ns: AtomicU64,
-    pub total_children_generated: AtomicU64,
-    pub total_depth_cutoffs: AtomicU64,
-    pub total_early_cutoffs: AtomicU64,
-    pub total_node_table_lookups: AtomicU64,
-    pub total_node_table_hits: AtomicU64,
-    pub total_nodes_created: AtomicU64,
+    pub stats: TreeStatsAtomic,
 }
 
 impl SharedTree {
@@ -109,6 +82,8 @@ impl SharedTree {
         }
         let transposition_table =
             existing_tt.unwrap_or_else(|| Arc::new(RwLock::new(HashMap::new())));
+        let stats = TreeStatsAtomic::new();
+        stats.nodes_created.store(1, Ordering::Relaxed);
         Self {
             root,
             transposition_table,
@@ -116,35 +91,7 @@ impl SharedTree {
             depth_limit,
             solved: AtomicBool::new(false),
             stop_flag,
-            total_iterations: AtomicU64::new(0),
-            total_expansions: AtomicU64::new(0),
-            total_tt_lookups: AtomicU64::new(0),
-            total_tt_hits: AtomicU64::new(0),
-            total_tt_stores: AtomicU64::new(0),
-            total_eval_calls: AtomicU64::new(0),
-            total_eval_time_ns: AtomicU64::new(0),
-            total_expand_time_ns: AtomicU64::new(0),
-            total_movegen_time_ns: AtomicU64::new(0),
-            total_board_update_time_ns: AtomicU64::new(0),
-            total_bitboard_update_time_ns: AtomicU64::new(0),
-            total_threat_index_update_time_ns: AtomicU64::new(0),
-            total_candidate_remove_time_ns: AtomicU64::new(0),
-            total_candidate_neighbor_time_ns: AtomicU64::new(0),
-            total_candidate_insert_time_ns: AtomicU64::new(0),
-            total_candidate_newly_added_time_ns: AtomicU64::new(0),
-            total_candidate_history_time_ns: AtomicU64::new(0),
-            total_hash_update_time_ns: AtomicU64::new(0),
-            total_move_undo_time_ns: AtomicU64::new(0),
-            total_hash_time_ns: AtomicU64::new(0),
-            total_children_lock_time_ns: AtomicU64::new(0),
-            total_node_table_lookup_time_ns: AtomicU64::new(0),
-            total_node_table_write_time_ns: AtomicU64::new(0),
-            total_children_generated: AtomicU64::new(0),
-            total_depth_cutoffs: AtomicU64::new(0),
-            total_early_cutoffs: AtomicU64::new(0),
-            total_node_table_lookups: AtomicU64::new(0),
-            total_node_table_hits: AtomicU64::new(0),
-            total_nodes_created: AtomicU64::new(1),
+            stats,
         }
     }
 
