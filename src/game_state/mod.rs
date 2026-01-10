@@ -219,7 +219,18 @@ impl GomokuGameState {
         self.candidate_moves.remove(&mov);
         timing.candidate_remove_ns = duration_to_ns(candidate_remove_start.elapsed());
         let candidate_neighbor_start = Instant::now();
-        let neighbor_coords = self.neighbor_coords();
+        let mut neighbor_coords = Vec::new();
+        let row_start = r.saturating_sub(1);
+        let row_end = (r + 1).min(self.board_size - 1);
+        let col_start = c.saturating_sub(1);
+        let col_end = (c + 1).min(self.board_size - 1);
+        for nr in row_start..=row_end {
+            for nc in col_start..=col_end {
+                if self.board[nr][nc] == 0 {
+                    neighbor_coords.push((nr, nc));
+                }
+            }
+        }
         timing.candidate_neighbor_ns = duration_to_ns(candidate_neighbor_start.elapsed());
         let mut candidate_insert_ns = 0u64;
         let mut candidate_newly_added_ns = 0u64;
