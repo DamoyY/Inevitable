@@ -95,8 +95,7 @@ impl ParallelSolver {
         existing_tt: Option<TranspositionTable>,
     ) -> Self {
         let hasher = Arc::new(ZobristHasher::new(params.board_size));
-        let game_state =
-            GomokuGameState::new(initial_board, hasher, 1, params.win_len);
+        let game_state = GomokuGameState::new(initial_board, hasher, 1, params.win_len);
         let root_hash = game_state.get_canonical_hash();
         let root_pos_hash = game_state.get_hash();
 
@@ -182,13 +181,8 @@ impl ParallelSolver {
         existing_tt: Option<TranspositionTable>,
     ) -> (Option<(usize, usize)>, TranspositionTable) {
         let mut depth = 1usize;
-        let mut solver = Self::with_tt_and_stop(
-            initial_board,
-            params,
-            Some(depth),
-            stop_flag,
-            existing_tt,
-        );
+        let mut solver =
+            Self::with_tt_and_stop(initial_board, params, Some(depth), stop_flag, existing_tt);
         loop {
             if stop_flag.load(Ordering::Acquire) {
                 return (None, solver.get_tt());
@@ -206,17 +200,9 @@ impl ParallelSolver {
                     let path_len = format_sci_u64(solver.root_win_len());
                     let best_move_display = best_move.map_or_else(
                         || "None".to_string(),
-                        |(x, y)| {
-                            format!(
-                                "({}, {})",
-                                format_sci_usize(x),
-                                format_sci_usize(y)
-                            )
-                        },
+                        |(x, y)| format!("({}, {})", format_sci_usize(x), format_sci_usize(y)),
                     );
-                    println!(
-                        "在 {path_len} 步内找到路径，最佳首步: {best_move_display}"
-                    );
+                    println!("在 {path_len} 步内找到路径，最佳首步: {best_move_display}");
                 }
                 return (best_move, solver.get_tt());
             }

@@ -72,7 +72,13 @@ impl ParallelSolver {
     }
 
     fn maybe_spawn_logger(&self, verbose: bool) -> Option<LoggerHandle> {
-        verbose.then(|| spawn_logger(Arc::clone(&self.tree), self.log_interval_ms))
+        verbose.then(|| {
+            spawn_logger(
+                Arc::clone(&self.tree),
+                self.log_interval_ms,
+                self.current_turn(),
+            )
+        })
     }
 
     fn stop_logger(logger: Option<LoggerHandle>) {
@@ -115,5 +121,14 @@ impl ParallelSolver {
             speed: None,
         });
         println!("{line}");
+    }
+
+    fn current_turn(&self) -> usize {
+        self.base_game_state
+            .board
+            .iter()
+            .flatten()
+            .filter(|&&cell| cell == 2)
+            .count()
     }
 }
