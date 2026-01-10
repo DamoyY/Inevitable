@@ -3,7 +3,7 @@ mod bitboard;
 mod evaluation;
 mod threat_index;
 mod zobrist;
-pub use bitboard::Bitboard;
+pub use bitboard::{Bitboard, BitboardWorkspace};
 pub use threat_index::ThreatIndex;
 pub use zobrist::ZobristHasher;
 pub type Coord = (usize, usize);
@@ -88,21 +88,28 @@ impl GomokuGameState {
         };
         state.rebuild_hashes(current_player);
         state.threat_index.initialize_from_board(&state.board);
-        state.rebuild_candidate_moves();
+        let mut workspace = BitboardWorkspace::new(state.bitboard.num_words());
+        state.rebuild_candidate_moves(&mut workspace);
         state.rebuild_proximity_maps();
         state
     }
 
-    pub(crate) fn rebuild_candidate_moves(&mut self) {
-        let occupied = self.bitboard.occupied();
-        if Bitboard::is_all_zeros(&occupied) {
+    pub(crate) fn rebuild_candidate_moves(&mut self, workspace: &mut BitboardWorkspace) {
+        let (occupied, neighbors, masked_not_left, masked_not_right, temp) = workspace.pads_mut();
+        self.bitboard.occupied_into(occupied);
+        if Bitboard::is_all_zeros(occupied) {
             self.candidate_moves.fill(0);
             let center = self.board_size / 2;
             self.bitboard
                 .set_in(&mut self.candidate_moves, center, center);
             return;
         }
-        self.candidate_moves = self.bitboard.neighbors(&occupied);
+        self.bitboard
+            .neighbors_into(occupied, neighbors, masked_not_left, masked_not_right, temp);
+        if self.candidate_moves.len() != neighbors.len() {
+            self.candidate_moves.resize(neighbors.len(), 0);
+        }
+        self.candidate_moves.copy_from_slice(neighbors);
     }
 
     pub(crate) fn rebuild_hashes(&mut self, player: u8) {
@@ -302,8 +309,12 @@ impl GomokuGameState {
     }
 
     #[must_use]
-    pub fn get_legal_moves(&self, player: u8) -> Vec<Coord> {
-        let (win_moves, threat_moves) = self.find_forcing_moves(player);
+    pub fn get_legal_moves(
+        &self,
+        player: u8,
+        workspace: &mut BitboardWorkspace,
+    ) -> Vec<Coord> {
+        let (win_moves, threat_moves) = self.find_forcing_moves(player);        
 
         if !win_moves.is_empty() {
             return win_moves;
@@ -311,11 +322,12 @@ impl GomokuGameState {
         if !threat_moves.is_empty() {
             return self.score_and_sort_moves(player, &threat_moves);
         }
-        let empty_bits = self.bitboard.empty();
-        if Bitboard::is_all_zeros(&empty_bits) {
+        let (empty_bits, _, _, _, _) = workspace.pads_mut();
+        self.bitboard.empty_into(empty_bits);
+        if Bitboard::is_all_zeros(empty_bits) {
             return Vec::new();
         }
-        let empties: Vec<Coord> = self.bitboard.iter_bits(&empty_bits).collect();
+        let empties: Vec<Coord> = self.bitboard.iter_bits(empty_bits).collect();
         self.score_and_sort_moves(player, &empties)
     }
 }

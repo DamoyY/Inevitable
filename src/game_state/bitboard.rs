@@ -6,6 +6,35 @@ pub struct Bitboard {
     size: usize,
     num_words: usize,
 }
+pub struct BitboardWorkspace {
+    scratch_pad: Vec<Vec<u64>>,
+}
+type ScratchPads<'a> = (
+    &'a mut Vec<u64>,
+    &'a mut Vec<u64>,
+    &'a mut Vec<u64>,
+    &'a mut Vec<u64>,
+    &'a mut Vec<u64>,
+);
+impl BitboardWorkspace {
+    #[must_use]
+    pub fn new(num_words: usize) -> Self {
+        let mut scratch_pad = Vec::with_capacity(5);
+        for _ in 0..5 {
+            scratch_pad.push(vec![0; num_words]);
+        }
+        Self { scratch_pad }
+    }
+
+    pub fn pads_mut(&mut self) -> ScratchPads<'_> {
+        let (pad0, rest) = self.scratch_pad.split_at_mut(1);
+        let (pad1, rest) = rest.split_at_mut(1);
+        let (pad2, rest) = rest.split_at_mut(1);
+        let (pad3, rest) = rest.split_at_mut(1);
+        let pad4 = &mut rest[0];
+        (&mut pad0[0], &mut pad1[0], &mut pad2[0], &mut pad3[0], pad4)
+    }
+}
 impl Bitboard {
     #[must_use]
     pub fn new(board_size: usize) -> Self {
@@ -17,6 +46,11 @@ impl Bitboard {
             size: board_size,
             num_words,
         }
+    }
+
+    #[must_use]
+    pub const fn num_words(&self) -> usize {
+        self.num_words
     }
 
     #[inline]
@@ -74,13 +108,15 @@ impl Bitboard {
     }
 
     #[inline]
-    #[must_use]
-    pub fn occupied(&self) -> Vec<u64> {
-        self.black
-            .iter()
+    pub fn occupied_into(&self, target: &mut Vec<u64>) {
+        self.resize_target(target);
+        for ((word, b), w) in target
+            .iter_mut()
+            .zip(self.black.iter())
             .zip(self.white.iter())
-            .map(|(b, w)| b | w)
-            .collect()
+        {
+            *word = b | w;
+        }
     }
 
     #[inline]
@@ -95,14 +131,16 @@ impl Bitboard {
     }
 
     #[inline]
-    #[must_use]
-    pub fn empty(&self) -> Vec<u64> {
-        let occupied = self.occupied();
-        let mut result: Vec<u64> = occupied.iter().map(|o| !o).collect();
-        if let Some(last) = result.last_mut() {
-            *last &= self.last_word_mask();
+    pub fn empty_into(&self, target: &mut Vec<u64>) {
+        self.resize_target(target);
+        for ((word, b), w) in target
+            .iter_mut()
+            .zip(self.black.iter())
+            .zip(self.white.iter())
+        {
+            *word = !(b | w);
         }
-        result
+        self.apply_mask(target);
     }
 
     #[must_use]
@@ -110,48 +148,66 @@ impl Bitboard {
         bits.iter().all(|&w| w == 0)
     }
 
-    fn shift(&self, bits: &[u64], n: usize, left: bool) -> Vec<u64> {
+    fn shift_into(&self, bits: &[u64], target: &mut Vec<u64>, n: usize, left: bool) {
+        self.resize_target(target);
         if n == 0 {
-            return bits.to_vec();
+            target.copy_from_slice(bits);
+            return;
         }
+        target.fill(0);
         let word_shift = n / 64;
         let bit_shift = n % 64;
-        let mut result = vec![0u64; self.num_words];
         if left {
-            for (i, result_word) in result.iter_mut().enumerate().skip(word_shift) {
+            for (i, word) in target.iter_mut().enumerate().skip(word_shift) {
                 let src = i - word_shift;
-                *result_word = bits[src] << bit_shift;
+                let mut value = bits[src] << bit_shift;
                 if bit_shift > 0 && src > 0 {
-                    *result_word |= bits[src - 1] >> (64 - bit_shift);
+                    value |= bits[src - 1] >> (64 - bit_shift);
                 }
+                *word = value;
             }
         } else {
             let count = self.num_words.saturating_sub(word_shift);
-            for (i, result_word) in result.iter_mut().enumerate().take(count) {
+            for (i, word) in target.iter_mut().enumerate().take(count) {
                 let src = i + word_shift;
-                *result_word = bits[src] >> bit_shift;
+                let mut value = bits[src] >> bit_shift;
                 if bit_shift > 0 && src + 1 < self.num_words {
-                    *result_word |= bits[src + 1] << (64 - bit_shift);
+                    value |= bits[src + 1] << (64 - bit_shift);
                 }
+                *word = value;
             }
         }
-        result
     }
 
-    fn shift_left(&self, bits: &[u64], n: usize) -> Vec<u64> {
-        self.shift(bits, n, true)
+    fn shift_left_into(&self, bits: &[u64], target: &mut Vec<u64>, n: usize) {
+        self.shift_into(bits, target, n, true);
     }
 
-    fn shift_right(&self, bits: &[u64], n: usize) -> Vec<u64> {
-        self.shift(bits, n, false)
+    fn shift_right_into(&self, bits: &[u64], target: &mut Vec<u64>, n: usize) {
+        self.shift_into(bits, target, n, false);
     }
 
-    fn bitwise_or(a: &[u64], b: &[u64]) -> Vec<u64> {
-        a.iter().zip(b.iter()).map(|(x, y)| x | y).collect()
+    fn copy_and_clear_col(&self, source: &[u64], target: &mut Vec<u64>, col: usize) {
+        self.resize_target(target);
+        target.copy_from_slice(source);
+        for row in 0..self.size {
+            let bit_pos = row * self.size + col;
+            let word_idx = bit_pos / 64;
+            let bit_idx = bit_pos % 64;
+            target[word_idx] &= !(1u64 << bit_idx);
+        }
     }
 
-    fn bitwise_and_not(a: &[u64], b: &[u64]) -> Vec<u64> {
-        a.iter().zip(b.iter()).map(|(x, y)| x & !y).collect()
+    fn or_inplace(target: &mut [u64], src: &[u64]) {
+        for (word, add) in target.iter_mut().zip(src.iter()) {
+            *word |= add;
+        }
+    }
+
+    fn resize_target(&self, target: &mut Vec<u64>) {
+        if target.len() != self.num_words {
+            target.resize(self.num_words, 0);
+        }
     }
 
     const fn apply_mask(&self, bits: &mut [u64]) {
@@ -160,49 +216,51 @@ impl Bitboard {
         }
     }
 
-    #[must_use]
-    pub fn dilate(&self, bb: &[u64]) -> Vec<u64> {
+    pub fn dilate_into(
+        &self,
+        bb: &[u64],
+        target: &mut Vec<u64>,
+        masked_not_left: &mut Vec<u64>,
+        masked_not_right: &mut Vec<u64>,
+        temp: &mut Vec<u64>,
+    ) {
         let size = self.size;
-        let left_mask = self.col_mask(0);
-        let right_mask = self.col_mask(size - 1);
-        let masked_not_left = Self::bitwise_and_not(bb, &left_mask);
-        let masked_not_right = Self::bitwise_and_not(bb, &right_mask);
-        let shifted_left = self.shift_right(&masked_not_left, 1);
-        let shifted_right = self.shift_left(&masked_not_right, 1);
-        let shifted_up = self.shift_right(bb, size);
-        let shifted_down = self.shift_left(bb, size);
-        let shifted_up_left = self.shift_right(&masked_not_left, size + 1);
-        let shifted_up_right = self.shift_right(&masked_not_right, size - 1);
-        let shifted_down_left = self.shift_left(&masked_not_left, size - 1);
-        let shifted_down_right = self.shift_left(&masked_not_right, size + 1);
-        let mut result = bb.to_vec();
-        result = Self::bitwise_or(&result, &shifted_left);
-        result = Self::bitwise_or(&result, &shifted_right);
-        result = Self::bitwise_or(&result, &shifted_up);
-        result = Self::bitwise_or(&result, &shifted_down);
-        result = Self::bitwise_or(&result, &shifted_up_left);
-        result = Self::bitwise_or(&result, &shifted_up_right);
-        result = Self::bitwise_or(&result, &shifted_down_left);
-        result = Self::bitwise_or(&result, &shifted_down_right);
-        self.apply_mask(&mut result);
-        result
+        self.copy_and_clear_col(bb, masked_not_left, 0);
+        self.copy_and_clear_col(bb, masked_not_right, size - 1);
+        self.resize_target(target);
+        target.copy_from_slice(bb);
+        self.shift_right_into(masked_not_left, temp, 1);
+        Self::or_inplace(target, temp);
+        self.shift_left_into(masked_not_right, temp, 1);
+        Self::or_inplace(target, temp);
+        self.shift_right_into(bb, temp, size);
+        Self::or_inplace(target, temp);
+        self.shift_left_into(bb, temp, size);
+        Self::or_inplace(target, temp);
+        self.shift_right_into(masked_not_left, temp, size + 1);
+        Self::or_inplace(target, temp);
+        self.shift_right_into(masked_not_right, temp, size - 1);
+        Self::or_inplace(target, temp);
+        self.shift_left_into(masked_not_left, temp, size - 1);
+        Self::or_inplace(target, temp);
+        self.shift_left_into(masked_not_right, temp, size + 1);
+        Self::or_inplace(target, temp);
+        self.apply_mask(target);
     }
 
-    #[must_use]
-    pub fn neighbors(&self, bb: &[u64]) -> Vec<u64> {
-        let dilated = self.dilate(bb);
-        Self::bitwise_and_not(&dilated, bb)
-    }
-
-    fn col_mask(&self, col: usize) -> Vec<u64> {
-        let mut result = vec![0u64; self.num_words];
-        for row in 0..self.size {
-            let bit_pos = row * self.size + col;
-            let word_idx = bit_pos / 64;
-            let bit_idx = bit_pos % 64;
-            result[word_idx] |= 1u64 << bit_idx;
+    pub fn neighbors_into(
+        &self,
+        bb: &[u64],
+        target: &mut Vec<u64>,
+        masked_not_left: &mut Vec<u64>,
+        masked_not_right: &mut Vec<u64>,
+        temp: &mut Vec<u64>,
+    ) {
+        self.dilate_into(bb, target, masked_not_left, masked_not_right, temp);
+        for (word, src) in target.iter_mut().zip(bb.iter()) {
+            *word &= !src;
         }
-        result
+        self.apply_mask(target);
     }
 
     #[must_use]
