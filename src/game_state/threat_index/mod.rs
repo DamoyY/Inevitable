@@ -81,7 +81,7 @@ impl ThreatIndex {
         }
     }
 
-    pub fn initialize_from_board(&mut self, board: &[Vec<u8>]) {
+    pub fn initialize_from_board(&mut self, board: &[u8]) {
         let win_len = self.win_len;
         for window_idx in 0..self.all_windows.len() {
             let window = &mut self.all_windows[window_idx];
@@ -90,7 +90,7 @@ impl ThreatIndex {
             window.empty_cells.clear();
 
             for &(r, c) in &window.coords {
-                let player = board[r][c];
+                let player = board[r * self.board_size + c];
                 if player == 1 {
                     window.p1_count += 1;
                 } else if player == 2 {
@@ -100,7 +100,7 @@ impl ThreatIndex {
             window.empty_count = win_len - window.p1_count - window.p2_count;
 
             for &(r, c) in &window.coords {
-                if board[r][c] == 0 {
+                if board[r * self.board_size + c] == 0 {
                     window.empty_cells.insert((r, c));
                 }
             }

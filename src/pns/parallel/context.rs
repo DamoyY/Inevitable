@@ -14,16 +14,19 @@ pub struct ThreadLocalContext {
     pub path_stack: Vec<PathEntry>,
     pub thread_id: usize,
     pub bitboard_workspace: BitboardWorkspace,
+    pub score_buffer: Vec<f32>,
 }
 
 impl ThreadLocalContext {
     pub fn new(game_state: GomokuGameState, thread_id: usize) -> Self {
         let num_words = game_state.bitboard.num_words();
+        let board_cells = game_state.board_size.saturating_mul(game_state.board_size);
         Self {
             game_state,
             path_stack: Vec::with_capacity(256),
             thread_id,
             bitboard_workspace: BitboardWorkspace::new(num_words),
+            score_buffer: vec![0.0; board_cells],
         }
     }
 
@@ -78,6 +81,10 @@ impl ThreadLocalContext {
 
     pub fn get_legal_moves(&mut self, player: u8) -> Vec<(usize, usize)> {
         self.game_state
-            .get_legal_moves(player, &mut self.bitboard_workspace)
+            .get_legal_moves(
+                player,
+                &mut self.bitboard_workspace,
+                &mut self.score_buffer,
+            )
     }
 }

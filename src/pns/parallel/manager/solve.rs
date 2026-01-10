@@ -65,8 +65,6 @@ impl ParallelSolver {
         self.base_game_state
             .board
             .iter()
-            .flatten()
-            .filter(|&&cell| cell == 2)
-            .count()
+            .fold(0usize, |count, &cell| count + usize::from(cell == 2))
     }
 }

@@ -17,16 +17,20 @@ use crate::{
     pns::{NodeTable, ParallelSolver, SearchParams, TranspositionTable},
 };
 
-pub fn print_board(board: &[Vec<u8>]) {
-    let board_size = board.len();
+const fn board_index(board_size: usize, r: usize, c: usize) -> usize {
+    r * board_size + c
+}
+
+pub fn print_board(board: &[u8], board_size: usize) {
     print!("  ");
     for i in 0..board_size {
         print!("{i:2} ");
     }
     println!();
-    for (i, row) in board.iter().enumerate() {
-        print!("{i:2} ");
-        for &cell in row {
+    for r in 0..board_size {
+        print!("{r:2} ");
+        for c in 0..board_size {
+            let cell = board[board_index(board_size, r, c)];
             let c = match cell {
                 1 => "X",
                 2 => "O",
@@ -41,7 +45,7 @@ pub fn play_game(exit_flag: &Arc<AtomicBool>) {
     let config = Config::load();
     print_intro(&config);
     let board_size = config.board_size;
-    let mut board = vec![vec![0u8; board_size]; board_size];
+    let mut board = vec![0u8; board_size.saturating_mul(board_size)];
     let mut current_player = 1u8;
     let mut tt: Option<TranspositionTable> = None;
     let mut node_table: NodeTable = Arc::new(RwLock::new(HashMap::new()));
@@ -49,10 +53,10 @@ pub fn play_game(exit_flag: &Arc<AtomicBool>) {
         if exit_flag.load(Ordering::SeqCst) {
             return;
         }
-        let has_stones = board.iter().any(|row| row.iter().any(|&cell| cell != 0));
+        let has_stones = board.iter().any(|&cell| cell != 0);
         if has_stones {
             println!("\n当前棋盘:");
-            print_board(&board);
+            print_board(&board, board_size);
         }
         if current_player == 1 {
             if ai_turn(
@@ -92,7 +96,7 @@ fn print_intro(config: &Config) {
 }
 
 fn ai_turn(
-    board: &mut [Vec<u8>],
+    board: &mut [u8],
     config: &Config,
     board_empty: bool,
     tt: &mut Option<TranspositionTable>,
@@ -135,27 +139,27 @@ fn ai_turn(
         return true;
     }
     println!("程序选择落子于: {mov:?}");
-    board[mov.0][mov.1] = 1;
+    board[board_index(board_size, mov.0, mov.1)] = 1;
     if check_win(board, board_size, win_len, num_threads, 1) {
         println!("\n最终棋盘:");
-        print_board(board);
+        print_board(board, board_size);
         println!("程序获胜");
         return true;
     }
     false
 }
 
-fn player_turn(board: &mut [Vec<u8>], board_size: usize, exit_flag: &AtomicBool) -> bool {
+fn player_turn(board: &mut [u8], board_size: usize, exit_flag: &AtomicBool) -> bool {
     println!("\n轮到您 (O) 落子。");
     let Some(mov) = read_player_move(board, board_size, exit_flag) else {
         return true;
     };
-    board[mov.0][mov.1] = 2;
+    board[board_index(board_size, mov.0, mov.1)] = 2;
     false
 }
 
 fn read_player_move(
-    board: &[Vec<u8>],
+    board: &[u8],
     board_size: usize,
     exit_flag: &AtomicBool,
 ) -> Option<(usize, usize)> {
@@ -186,7 +190,7 @@ fn read_player_move(
                     println!("坐标超出范围。");
                     continue;
                 }
-                if board[r][c] != 0 {
+                if board[board_index(board_size, r, c)] != 0 {
                     println!("该位置已有棋子。");
                     continue;
                 }
@@ -226,7 +230,7 @@ fn read_line_with_exit(exit_flag: &AtomicBool) -> Result<String, InputError> {
 }
 
 fn check_win(
-    board: &[Vec<u8>],
+    board: &[u8],
     board_size: usize,
     win_len: usize,
     num_threads: usize,

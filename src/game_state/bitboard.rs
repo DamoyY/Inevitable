@@ -1,13 +1,14 @@
 use super::Coord;
+use smallvec::{smallvec, SmallVec};
 #[derive(Clone, Debug, Default)]
 pub struct Bitboard {
-    black: Vec<u64>,
-    white: Vec<u64>,
+    black: SmallVec<[u64; 8]>,
+    white: SmallVec<[u64; 8]>,
     size: usize,
     num_words: usize,
 }
 pub struct BitboardWorkspace {
-    scratch_pad: Vec<Vec<u64>>,
+    scratch_pad: [Vec<u64>; 5],
 }
 type ScratchPads<'a> = (
     &'a mut Vec<u64>,
@@ -19,20 +20,13 @@ type ScratchPads<'a> = (
 impl BitboardWorkspace {
     #[must_use]
     pub fn new(num_words: usize) -> Self {
-        let mut scratch_pad = Vec::with_capacity(5);
-        for _ in 0..5 {
-            scratch_pad.push(vec![0; num_words]);
-        }
+        let scratch_pad = std::array::from_fn(|_| vec![0; num_words]);
         Self { scratch_pad }
     }
 
-    pub fn pads_mut(&mut self) -> ScratchPads<'_> {
-        let (pad0, rest) = self.scratch_pad.split_at_mut(1);
-        let (pad1, rest) = rest.split_at_mut(1);
-        let (pad2, rest) = rest.split_at_mut(1);
-        let (pad3, rest) = rest.split_at_mut(1);
-        let pad4 = &mut rest[0];
-        (&mut pad0[0], &mut pad1[0], &mut pad2[0], &mut pad3[0], pad4)
+    pub const fn pads_mut(&mut self) -> ScratchPads<'_> {
+        let [pad0, pad1, pad2, pad3, pad4] = &mut self.scratch_pad;
+        (pad0, pad1, pad2, pad3, pad4)
     }
 }
 impl Bitboard {
@@ -41,8 +35,8 @@ impl Bitboard {
         let total_bits = board_size * board_size;
         let num_words = total_bits.div_ceil(64);
         Self {
-            black: vec![0; num_words],
-            white: vec![0; num_words],
+            black: smallvec![0; num_words],
+            white: smallvec![0; num_words],
             size: board_size,
             num_words,
         }
@@ -68,8 +62,8 @@ impl Bitboard {
 
     #[inline]
     #[must_use]
-    pub fn empty_mask(&self) -> Vec<u64> {
-        vec![0u64; self.num_words]
+    pub fn empty_mask(&self) -> SmallVec<[u64; 8]> {
+        smallvec![0u64; self.num_words]
     }
 
     #[inline]
@@ -264,21 +258,22 @@ impl Bitboard {
     }
 
     #[must_use]
-    pub fn iter_bits(&self, bb: &[u64]) -> BitIterator {
+    pub const fn iter_bits<'a>(&self, bb: &'a [u64]) -> BitIterator<'a> {
         BitIterator {
-            bits: bb.to_vec(),
+            bits: bb,
             size: self.size,
             word_idx: 0,
             base_bit: 0,
+            current_word: 0,
         }
     }
 
     #[must_use]
-    pub fn from_board(board: &[Vec<u8>]) -> Self {
-        let size = board.len();
-        let mut bb = Self::new(size);
-        for (r, row) in board.iter().enumerate() {
-            for (c, &cell) in row.iter().enumerate() {
+    pub fn from_board(board: &[u8], board_size: usize) -> Self {
+        let mut bb = Self::new(board_size);
+        for r in 0..board_size {
+            for c in 0..board_size {
+                let cell = board[r * board_size + c];
                 if cell == 1 {
                     bb.set(r, c, 1);
                 } else if cell == 2 {
@@ -289,28 +284,38 @@ impl Bitboard {
         bb
     }
 }
-pub struct BitIterator {
-    bits: Vec<u64>,
+pub struct BitIterator<'a> {
+    bits: &'a [u64],
     size: usize,
     word_idx: usize,
     base_bit: usize,
+    current_word: u64,
 }
-impl Iterator for BitIterator {
+impl Iterator for BitIterator<'_> {
     type Item = Coord;
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
-        while self.word_idx < self.bits.len() {
-            let word = self.bits[self.word_idx];
-            if word != 0 {
-                let bit_in_word = word.trailing_zeros() as usize;
-                self.bits[self.word_idx] &= self.bits[self.word_idx] - 1;
-                let global_bit = self.base_bit + bit_in_word;
-                return Some((global_bit / self.size, global_bit % self.size));
+        loop {
+            if self.current_word == 0 {
+                if self.word_idx >= self.bits.len() {
+                    return None;
+                }
+                self.current_word = self.bits[self.word_idx];
+                if self.current_word == 0 {
+                    self.word_idx += 1;
+                    self.base_bit += 64;
+                    continue;
+                }
             }
-            self.word_idx += 1;
-            self.base_bit += 64;
+            let bit_in_word = self.current_word.trailing_zeros() as usize;
+            self.current_word &= self.current_word - 1;
+            let global_bit = self.base_bit + bit_in_word;
+            if self.current_word == 0 {
+                self.word_idx += 1;
+                self.base_bit += 64;
+            }
+            return Some((global_bit / self.size, global_bit % self.size));
         }
-        None
     }
 }

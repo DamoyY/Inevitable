@@ -44,7 +44,7 @@ impl SearchParams {
 impl ParallelSolver {
     #[must_use]
     pub fn new(
-        initial_board: Vec<Vec<u8>>,
+        initial_board: Vec<u8>,
         board_size: usize,
         win_len: usize,
         depth_limit: Option<usize>,
@@ -63,7 +63,7 @@ impl ParallelSolver {
 
     #[must_use]
     pub fn with_tt(
-        initial_board: Vec<Vec<u8>>,
+        initial_board: Vec<u8>,
         board_size: usize,
         win_len: usize,
         depth_limit: Option<usize>,
@@ -83,7 +83,7 @@ impl ParallelSolver {
 
     #[must_use]
     pub fn with_tt_and_stop(
-        initial_board: Vec<Vec<u8>>,
+        initial_board: Vec<u8>,
         params: SearchParams,
         depth_limit: Option<usize>,
         stop_flag: &Arc<AtomicBool>,
@@ -93,7 +93,8 @@ impl ParallelSolver {
         alloc_stats::reset_alloc_timing_ns();
         let _alloc_guard = alloc_stats::AllocTrackingGuard::new();
         let hasher = Arc::new(ZobristHasher::new(params.board_size));
-        let game_state = GomokuGameState::new(initial_board, hasher, 1, params.win_len);
+        let game_state =
+            GomokuGameState::new(initial_board, params.board_size, hasher, 1, params.win_len);
         let root_hash = game_state.get_canonical_hash();
         let root_pos_hash = game_state.get_hash();
 
@@ -132,7 +133,7 @@ impl ParallelSolver {
 
     #[must_use]
     pub fn find_best_move_iterative_deepening(
-        initial_board: Vec<Vec<u8>>,
+        initial_board: Vec<u8>,
         board_size: usize,
         win_len: usize,
         num_threads: usize,
@@ -152,7 +153,7 @@ impl ParallelSolver {
 
     #[must_use]
     pub fn find_best_move_with_tt(
-        initial_board: Vec<Vec<u8>>,
+        initial_board: Vec<u8>,
         board_size: usize,
         win_len: usize,
         num_threads: usize,
@@ -172,7 +173,7 @@ impl ParallelSolver {
 
     #[must_use]
     pub fn find_best_move_with_tt_and_stop(
-        initial_board: Vec<Vec<u8>>,
+        initial_board: Vec<u8>,
         params: SearchParams,
         verbose: bool,
         stop_flag: &Arc<AtomicBool>,
@@ -301,7 +302,8 @@ impl ParallelSolver {
 impl Clone for GomokuGameState {
     fn clone(&self) -> Self {
         let hasher = Arc::clone(&self.hasher);
-        let mut state = Self::new(self.board.clone(), hasher, 1, self.win_len);
+        let mut state =
+            Self::new(self.board.clone(), self.board_size, hasher, 1, self.win_len);
         state.hash = self.hash;
         state
     }

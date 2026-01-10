@@ -10,6 +10,7 @@ parking_lot = "*"
 serde = { version = "*", features = ["derive"] }
 serde_yaml = "*"
 ctrlc = "*"
+smallvec = "*"
 
 [lints.clippy]
 all = "warn"
