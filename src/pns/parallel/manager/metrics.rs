@@ -76,7 +76,8 @@ pub(super) fn avg_expand_other_us(input: &TimingInput) -> f64 {
         .saturating_sub(input.move_make_ns)
         .saturating_sub(input.move_undo_ns)
         .saturating_sub(input.hash_ns)
-        .saturating_sub(input.node_table_ns)
+        .saturating_sub(input.node_table_lookup_ns)
+        .saturating_sub(input.node_table_write_ns)
         .saturating_sub(input.eval_ns);
     to_f64(other_ns) / to_f64(input.expansions) / 1_000.0
 }
@@ -89,7 +90,8 @@ pub(super) struct TimingInput {
     pub move_make_ns: u64,
     pub move_undo_ns: u64,
     pub hash_ns: u64,
-    pub node_table_ns: u64,
+    pub node_table_lookup_ns: u64,
+    pub node_table_write_ns: u64,
     pub eval_ns: u64,
     pub eval_calls: u64,
 }
@@ -100,7 +102,8 @@ pub(super) struct TimingStats {
     pub move_make_us: f64,
     pub move_undo_us: f64,
     pub hash_us: f64,
-    pub node_table_us: f64,
+    pub node_table_lookup_us: f64,
+    pub node_table_write_us: f64,
     pub eval_us_per_expand: f64,
     pub expand_other_us: f64,
     pub eval_us: f64,
@@ -136,7 +139,8 @@ pub(super) fn calc_timing_stats(input: &TimingInput) -> TimingStats {
         move_make_us: avg_us(input.move_make_ns, input.expansions),
         move_undo_us: avg_us(input.move_undo_ns, input.expansions),
         hash_us: avg_us(input.hash_ns, input.expansions),
-        node_table_us: avg_us(input.node_table_ns, input.expansions),
+        node_table_lookup_us: avg_us(input.node_table_lookup_ns, input.expansions),
+        node_table_write_us: avg_us(input.node_table_write_ns, input.expansions),
         eval_us_per_expand: avg_us(input.eval_ns, input.expansions),
         expand_other_us: avg_expand_other_us(input),
         eval_us: avg_us(input.eval_ns, input.eval_calls),

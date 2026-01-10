@@ -91,7 +91,7 @@ impl SharedTree {
             let node_table = self.node_table.read();
             node_table.get(&node_key).map(Arc::clone)
         };
-        self.total_node_table_time_ns
+        self.total_node_table_lookup_time_ns
             .fetch_add(duration_to_ns(lookup_start.elapsed()), Ordering::Relaxed);
         existing_child.map_or_else(
             || {
@@ -113,7 +113,7 @@ impl SharedTree {
                     let mut node_table = self.node_table.write();
                     node_table.insert(node_key, Arc::clone(&child));
                 }
-                self.total_node_table_time_ns
+                self.total_node_table_write_time_ns
                     .fetch_add(duration_to_ns(insert_start.elapsed()), Ordering::Relaxed);
                 self.total_nodes_created.fetch_add(1, Ordering::Relaxed);
                 child

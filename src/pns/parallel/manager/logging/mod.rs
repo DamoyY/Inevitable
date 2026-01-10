@@ -8,7 +8,9 @@ use snapshot::{LogSnapshot, capture_snapshot};
 
 use super::{
     SharedTree,
-    metrics::{calc_hit_rates, calc_timing_stats, format_sci_f64, format_sci_u64, format_sci_usize},
+    metrics::{
+        calc_hit_rates, calc_timing_stats, format_sci_f64, format_sci_u64, format_sci_usize,
+    },
 };
 
 mod counters;
@@ -29,6 +31,7 @@ fn open_log_writer() -> io::Result<BufWriter<File>> {
     let file = options.open(LOG_FILE_NAME)?;
     let mut writer = BufWriter::new(file);
     if truncate {
+        let _ = writer.write_all(&[0xEF, 0xBB, 0xBF]);
         write_csv_header(&mut writer)?;
         writer.flush()?;
     }
@@ -38,7 +41,10 @@ fn open_log_writer() -> io::Result<BufWriter<File>> {
 fn write_csv_header(writer: &mut impl Write) -> io::Result<()> {
     writeln!(
         writer,
-        "回合,深度,用时,迭代次数,扩展节点数,TT大小,TT命中率,TT写入数,复用表大小,复用命中率,复用节点数,新建节点数,平均分支数,平均走子耗时,平均落子耗时,平均撤销耗时,平均哈希耗时,平均复用表耗时,平均评估耗时,平均其他耗时,评估均耗时,深度截断数,提前剪枝数"
+        "回合,深度,用时,迭代次数,扩展节点数,TranspositionTable大小,TranspositionTable命中率,\
+         TranspositionTable写入数,NodeTable大小,NodeTable命中率,NodeTable节点数,NodeTable写入数,\
+         平均分支数,平均走子耗时,平均落子耗时,平均撤销耗时,平均哈希耗时,平均NodeTable写入耗时,\
+         平均NodeTable检索耗时,平均评估耗时,平均其他耗时,评估均耗时,深度截断数,提前剪枝数"
     )
 }
 
@@ -59,7 +65,10 @@ fn write_log(
     let depth = snapshot.depth_limit.unwrap_or(0);
     writeln!(
         writer,
-        "{turn},{depth},{elapsed},{iterations},{expansions},{tt_size},{tt_hit},{tt_stores},{node_table_size},{node_hit_rate},{node_hits},{nodes_created},{branch},{movegen},{move_make},{move_undo},{hash},{node_table},{eval_per_expand},{expand_other},{eval_avg},{depth_cutoffs},{early_cutoffs}",
+        "{turn},{depth},{elapsed},{iterations},{expansions},{tt_size},{tt_hit},{tt_stores},\
+         {node_table_size},{node_hit_rate},{node_hits},{nodes_created},{branch},{movegen},\
+         {move_make},{move_undo},{hash},{node_table_write},{node_table_lookup},{eval_per_expand},\
+         {expand_other},{eval_avg},{depth_cutoffs},{early_cutoffs}",
         depth = format_sci_usize(depth),
         elapsed = format_sci_f64(elapsed_secs),
         iterations = format_sci_u64(snapshot.counters.iterations),
@@ -76,7 +85,8 @@ fn write_log(
         move_make = format_sci_f64(timing_stats.move_make_us),
         move_undo = format_sci_f64(timing_stats.move_undo_us),
         hash = format_sci_f64(timing_stats.hash_us),
-        node_table = format_sci_f64(timing_stats.node_table_us),
+        node_table_write = format_sci_f64(timing_stats.node_table_write_us),
+        node_table_lookup = format_sci_f64(timing_stats.node_table_lookup_us),
         eval_per_expand = format_sci_f64(timing_stats.eval_us_per_expand),
         expand_other = format_sci_f64(timing_stats.expand_other_us),
         eval_avg = format_sci_f64(timing_stats.eval_us),

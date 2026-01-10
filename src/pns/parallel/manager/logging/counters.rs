@@ -16,7 +16,8 @@ pub(super) struct LogCounters {
     pub(super) tt_hits: u64,
     pub(super) node_table_lookups: u64,
     pub(super) node_table_hits: u64,
-    pub(super) node_table_time_ns: u64,
+    pub(super) node_table_lookup_time_ns: u64,
+    pub(super) node_table_write_time_ns: u64,
     pub(super) nodes_created: u64,
 }
 
@@ -37,7 +38,8 @@ impl LogCounters {
             tt_hits: tree.get_tt_hits(),
             node_table_lookups: tree.get_node_table_lookups(),
             node_table_hits: tree.get_node_table_hits(),
-            node_table_time_ns: tree.get_node_table_time_ns(),
+            node_table_lookup_time_ns: tree.get_node_table_lookup_time_ns(),
+            node_table_write_time_ns: tree.get_node_table_write_time_ns(),
             nodes_created: tree.get_nodes_created(),
         }
     }
@@ -51,7 +53,8 @@ impl LogCounters {
             move_make_ns: self.move_make_ns,
             move_undo_ns: self.move_undo_ns,
             hash_ns: self.hash_ns,
-            node_table_ns: self.node_table_time_ns,
+            node_table_lookup_ns: self.node_table_lookup_time_ns,
+            node_table_write_ns: self.node_table_write_time_ns,
             eval_ns: self.eval_ns,
             eval_calls: self.eval_calls,
         }

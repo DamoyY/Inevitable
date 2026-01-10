@@ -60,8 +60,12 @@ impl SharedTree {
         self.total_hash_time_ns.load(Ordering::Relaxed)
     }
 
-    pub fn get_node_table_time_ns(&self) -> u64 {
-        self.total_node_table_time_ns.load(Ordering::Relaxed)
+    pub fn get_node_table_lookup_time_ns(&self) -> u64 {
+        self.total_node_table_lookup_time_ns.load(Ordering::Relaxed)
+    }
+
+    pub fn get_node_table_write_time_ns(&self) -> u64 {
+        self.total_node_table_write_time_ns.load(Ordering::Relaxed)
     }
 
     pub fn get_children_generated(&self) -> u64 {
