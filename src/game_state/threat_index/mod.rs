@@ -1,13 +1,30 @@
-use std::collections::HashMap;
-
-use crate::utils::board_index;
-
-mod buckets;
-mod window;
+use std::collections::{HashMap, HashSet};
 
 use buckets::PatternBuckets;
-pub use window::Window;
 
+use crate::utils::board_index;
+mod buckets;
+#[derive(Clone)]
+pub struct Window {
+    pub coords: Vec<(usize, usize)>,
+    pub p1_count: usize,
+    pub p2_count: usize,
+    pub empty_count: usize,
+    pub empty_cells: HashSet<(usize, usize)>,
+}
+impl Window {
+    pub fn new(coords: Vec<(usize, usize)>) -> Self {
+        let empty_cells: HashSet<(usize, usize)> = coords.iter().copied().collect();
+        let empty_count = coords.len();
+        Self {
+            coords,
+            p1_count: 0,
+            p2_count: 0,
+            empty_count,
+            empty_cells,
+        }
+    }
+}
 #[derive(Clone)]
 pub struct ThreatIndex {
     pub board_size: usize,
@@ -16,7 +33,6 @@ pub struct ThreatIndex {
     pub all_windows: Vec<Window>,
     pattern_buckets: PatternBuckets,
 }
-
 impl ThreatIndex {
     #[must_use]
     pub fn new(board_size: usize, win_len: usize) -> Self {
@@ -75,7 +91,6 @@ impl ThreatIndex {
         let window_idx = self.all_windows.len();
         let window = Window::new(coords.clone());
         self.all_windows.push(window);
-
         for point in coords {
             self.point_to_windows_map
                 .entry(point)
@@ -91,7 +106,6 @@ impl ThreatIndex {
             window.p1_count = 0;
             window.p2_count = 0;
             window.empty_cells.clear();
-
             for &(r, c) in &window.coords {
                 let player = board[board_index(self.board_size, r, c)];
                 if player == 1 {
@@ -101,14 +115,12 @@ impl ThreatIndex {
                 }
             }
             window.empty_count = win_len - window.p1_count - window.p2_count;
-
             for &(r, c) in &window.coords {
                 if board[board_index(self.board_size, r, c)] == 0 {
                     window.empty_cells.insert((r, c));
                 }
             }
         }
-
         self.pattern_buckets.reset();
         for window_idx in 0..self.all_windows.len() {
             self.update_bucket_add(window_idx);
@@ -146,7 +158,6 @@ impl ThreatIndex {
             .unwrap_or_default();
         for window_idx in window_indices {
             self.update_bucket_remove(window_idx);
-
             let window = &mut self.all_windows[window_idx];
             if is_move {
                 window.empty_count -= 1;

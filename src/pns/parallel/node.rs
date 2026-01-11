@@ -1,39 +1,31 @@
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, AtomicU64, Ordering},
+};
+
 use parking_lot::RwLock;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::Arc;
-
 pub type NodeRef = Arc<ParallelNode>;
-
 #[derive(Clone)]
 pub struct ChildRef {
     pub node: NodeRef,
     pub mov: (usize, usize),
 }
-
 pub struct ParallelNode {
     pub player: u8,
     pub depth: usize,
     pub hash: u64,
-
     pub pn: AtomicU64,
     pub dn: AtomicU64,
     pub virtual_pn: AtomicU64,
     pub virtual_dn: AtomicU64,
     pub win_len: AtomicU64,
-
     pub children: RwLock<Option<Vec<ChildRef>>>,
     pub is_depth_limited: AtomicBool,
     pub depth_cutoff: AtomicBool,
 }
-
 impl ParallelNode {
-    #[must_use] 
-    pub const fn new(
-        player: u8,
-        depth: usize,
-        hash: u64,
-        is_depth_limited: bool,
-    ) -> Self {
+    #[must_use]
+    pub const fn new(player: u8, depth: usize, hash: u64, is_depth_limited: bool) -> Self {
         Self {
             player,
             depth,

@@ -7,12 +7,11 @@ use super::{SharedTree, duration_to_ns};
 use crate::{
     alloc_stats::AllocTrackingGuard,
     pns::parallel::{
+        TreeStatsAccumulator,
         context::ThreadLocalContext,
         node::{ChildRef, NodeRef, ParallelNode},
-        TreeStatsAccumulator,
     },
 };
-
 impl SharedTree {
     pub fn expand_node(&self, node: &NodeRef, ctx: &mut ThreadLocalContext) -> bool {
         let expand_start = Instant::now();
@@ -35,7 +34,8 @@ impl SharedTree {
             node.set_depth_cutoff(true);
             node.set_is_depth_limited(true);
             drop(write_guard);
-            self.stats.expand_time_ns
+            self.stats
+                .expand_time_ns
                 .fetch_add(duration_to_ns(expand_start.elapsed()), Ordering::Relaxed);
             return true;
         }
@@ -46,7 +46,8 @@ impl SharedTree {
         ctx.refresh_legal_moves(player);
         let legal_moves = std::mem::take(&mut ctx.legal_moves);
         let legal_moves_len = legal_moves.len();
-        self.stats.movegen_time_ns
+        self.stats
+            .movegen_time_ns
             .fetch_add(duration_to_ns(movegen_start.elapsed()), Ordering::Relaxed);
         let mut children = Vec::with_capacity(legal_moves_len);
         let mut local_stats = TreeStatsAccumulator::default();
@@ -55,16 +56,18 @@ impl SharedTree {
             local_stats.add_move_apply_timing(&move_timing);
             let pos_hash_start = Instant::now();
             let child_pos_hash = ctx.get_hash();
-            local_stats.hash_time_ns =
-                local_stats.hash_time_ns.wrapping_add(duration_to_ns(pos_hash_start.elapsed()));
+            local_stats.hash_time_ns = local_stats
+                .hash_time_ns
+                .wrapping_add(duration_to_ns(pos_hash_start.elapsed()));
             local_stats.node_table_lookups = local_stats.node_table_lookups.wrapping_add(1);
             let node_key = (child_pos_hash, depth + 1);
             let is_depth_limited = self.depth_limit.is_some_and(|limit| depth + 1 >= limit);
             let child = self.get_or_create_child(ctx, node_key, player, depth, is_depth_limited);
             let undo_start = Instant::now();
             ctx.undo_move(mov);
-            local_stats.move_undo_time_ns =
-                local_stats.move_undo_time_ns.wrapping_add(duration_to_ns(undo_start.elapsed()));
+            local_stats.move_undo_time_ns = local_stats
+                .move_undo_time_ns
+                .wrapping_add(duration_to_ns(undo_start.elapsed()));
             let proof_number = child.get_pn();
             let disproof_number = child.get_dn();
             children.push(ChildRef { node: child, mov });
@@ -81,11 +84,13 @@ impl SharedTree {
         if children.len() < legal_moves_len {
             self.stats.early_cutoffs.fetch_add(1, Ordering::Relaxed);
         }
-        self.stats.children_generated
+        self.stats
+            .children_generated
             .fetch_add(children.len() as u64, Ordering::Relaxed);
         *write_guard = Some(children);
         drop(write_guard);
-        self.stats.expand_time_ns
+        self.stats
+            .expand_time_ns
             .fetch_add(duration_to_ns(expand_start.elapsed()), Ordering::Relaxed);
         true
     }
@@ -100,7 +105,8 @@ impl SharedTree {
     ) -> Arc<ParallelNode> {
         let lookup_start = Instant::now();
         let existing_child = self.node_table.get(&node_key);
-        self.stats.node_table_lookup_time_ns
+        self.stats
+            .node_table_lookup_time_ns
             .fetch_add(duration_to_ns(lookup_start.elapsed()), Ordering::Relaxed);
         existing_child.map_or_else(
             || {
@@ -119,7 +125,8 @@ impl SharedTree {
                 self.evaluate_node(&child, ctx);
                 let insert_start = Instant::now();
                 self.node_table.insert(node_key, Arc::clone(&child));
-                self.stats.node_table_write_time_ns
+                self.stats
+                    .node_table_write_time_ns
                     .fetch_add(duration_to_ns(insert_start.elapsed()), Ordering::Relaxed);
                 self.stats.nodes_created.fetch_add(1, Ordering::Relaxed);
                 child

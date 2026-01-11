@@ -1,5 +1,9 @@
+use smallvec::{SmallVec, smallvec};
+
 use super::Coord;
-use smallvec::{smallvec, SmallVec};
+mod iterator;
+mod ops;
+pub use iterator::BitIterator;
 #[derive(Clone, Debug, Default)]
 pub struct Bitboard {
     black: SmallVec<[u64; 8]>,
@@ -114,17 +118,6 @@ impl Bitboard {
     }
 
     #[inline]
-    const fn last_word_mask(&self) -> u64 {
-        let total_bits = self.size * self.size;
-        let bits_in_last = total_bits % 64;
-        if bits_in_last == 0 {
-            u64::MAX
-        } else {
-            (1u64 << bits_in_last) - 1
-        }
-    }
-
-    #[inline]
     pub fn empty_into(&self, target: &mut Vec<u64>) {
         self.resize_target(target);
         for ((word, b), w) in target
@@ -140,122 +133,6 @@ impl Bitboard {
     #[must_use]
     pub fn is_all_zeros(bits: &[u64]) -> bool {
         bits.iter().all(|&w| w == 0)
-    }
-
-    fn shift_into(&self, bits: &[u64], target: &mut Vec<u64>, n: usize, left: bool) {
-        self.resize_target(target);
-        if n == 0 {
-            target.copy_from_slice(bits);
-            return;
-        }
-        target.fill(0);
-        let word_shift = n / 64;
-        let bit_shift = n % 64;
-        if left {
-            for (i, word) in target.iter_mut().enumerate().skip(word_shift) {
-                let src = i - word_shift;
-                let mut value = bits[src] << bit_shift;
-                if bit_shift > 0 && src > 0 {
-                    value |= bits[src - 1] >> (64 - bit_shift);
-                }
-                *word = value;
-            }
-        } else {
-            let count = self.num_words.saturating_sub(word_shift);
-            for (i, word) in target.iter_mut().enumerate().take(count) {
-                let src = i + word_shift;
-                let mut value = bits[src] >> bit_shift;
-                if bit_shift > 0 && src + 1 < self.num_words {
-                    value |= bits[src + 1] << (64 - bit_shift);
-                }
-                *word = value;
-            }
-        }
-    }
-
-    fn shift_left_into(&self, bits: &[u64], target: &mut Vec<u64>, n: usize) {
-        self.shift_into(bits, target, n, true);
-    }
-
-    fn shift_right_into(&self, bits: &[u64], target: &mut Vec<u64>, n: usize) {
-        self.shift_into(bits, target, n, false);
-    }
-
-    fn copy_and_clear_col(&self, source: &[u64], target: &mut Vec<u64>, col: usize) {
-        self.resize_target(target);
-        target.copy_from_slice(source);
-        for row in 0..self.size {
-            let (word_idx, mask) = self.coord_to_bit(row, col);
-            target[word_idx] &= !mask;
-        }
-    }
-
-    fn or_inplace(target: &mut [u64], src: &[u64]) {
-        for (word, add) in target.iter_mut().zip(src.iter()) {
-            *word |= add;
-        }
-    }
-
-    fn resize_target(&self, target: &mut Vec<u64>) {
-        if target.len() != self.num_words {
-            target.resize(self.num_words, 0);
-        }
-    }
-
-    const fn apply_mask(&self, bits: &mut [u64]) {
-        if let Some(last) = bits.last_mut() {
-            *last &= self.last_word_mask();
-        }
-    }
-
-    pub fn dilate_into(
-        &self,
-        bb: &[u64],
-        target: &mut Vec<u64>,
-        masked_not_left: &mut Vec<u64>,
-        masked_not_right: &mut Vec<u64>,
-        temp: &mut Vec<u64>,
-    ) {
-        let size = self.size;
-        self.copy_and_clear_col(bb, masked_not_left, 0);
-        self.copy_and_clear_col(bb, masked_not_right, size - 1);
-        self.resize_target(target);
-        target.copy_from_slice(bb);
-        let sources: [&[u64]; 3] = [bb, masked_not_left, masked_not_right];
-        let ops = [
-            (1usize, false, 1usize),
-            (2usize, true, 1usize),
-            (0usize, false, size),
-            (0usize, true, size),
-            (1usize, false, size + 1),
-            (2usize, false, size - 1),
-            (1usize, true, size - 1),
-            (2usize, true, size + 1),
-        ];
-        for (src_idx, shift_left, n) in ops {
-            if shift_left {
-                self.shift_left_into(sources[src_idx], temp, n);
-            } else {
-                self.shift_right_into(sources[src_idx], temp, n);
-            }
-            Self::or_inplace(target, temp);
-        }
-        self.apply_mask(target);
-    }
-
-    pub fn neighbors_into(
-        &self,
-        bb: &[u64],
-        target: &mut Vec<u64>,
-        masked_not_left: &mut Vec<u64>,
-        masked_not_right: &mut Vec<u64>,
-        temp: &mut Vec<u64>,
-    ) {
-        self.dilate_into(bb, target, masked_not_left, masked_not_right, temp);
-        for (word, src) in target.iter_mut().zip(bb.iter()) {
-            *word &= !src;
-        }
-        self.apply_mask(target);
     }
 
     #[must_use]
@@ -283,40 +160,5 @@ impl Bitboard {
             }
         }
         bb
-    }
-}
-pub struct BitIterator<'a> {
-    bits: &'a [u64],
-    size: usize,
-    word_idx: usize,
-    base_bit: usize,
-    current_word: u64,
-}
-impl Iterator for BitIterator<'_> {
-    type Item = Coord;
-
-    #[inline]
-    fn next(&mut self) -> Option<Self::Item> {
-        loop {
-            if self.current_word == 0 {
-                if self.word_idx >= self.bits.len() {
-                    return None;
-                }
-                self.current_word = self.bits[self.word_idx];
-                if self.current_word == 0 {
-                    self.word_idx += 1;
-                    self.base_bit += 64;
-                    continue;
-                }
-            }
-            let bit_in_word = self.current_word.trailing_zeros() as usize;
-            self.current_word &= self.current_word - 1;
-            let global_bit = self.base_bit + bit_in_word;
-            if self.current_word == 0 {
-                self.word_idx += 1;
-                self.base_bit += 64;
-            }
-            return Some((global_bit / self.size, global_bit % self.size));
-        }
     }
 }

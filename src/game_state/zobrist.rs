@@ -1,11 +1,9 @@
 use rand::{Rng, SeedableRng, rngs::StdRng};
-
 pub struct ZobristHasher {
     pub(crate) board_size: usize,
     pub(crate) zobrist_table: Vec<Vec<[u64; 3]>>,
     pub side_to_move_hash: u64,
 }
-
 impl ZobristHasher {
     #[must_use]
     pub fn new(board_size: usize) -> Self {

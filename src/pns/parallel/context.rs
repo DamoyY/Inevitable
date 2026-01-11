@@ -1,6 +1,5 @@
 use super::node::NodeRef;
 use crate::game_state::{BitboardWorkspace, GomokuGameState, MoveApplyTiming};
-
 pub struct PathEntry {
     pub node: NodeRef,
     pub mov: (usize, usize),
@@ -8,7 +7,6 @@ pub struct PathEntry {
     pub virtual_pn_added: u64,
     pub virtual_dn_added: u64,
 }
-
 pub struct ThreadLocalContext {
     pub game_state: GomokuGameState,
     pub path_stack: Vec<PathEntry>,
@@ -19,7 +17,6 @@ pub struct ThreadLocalContext {
     pub scored_moves: Vec<((usize, usize), f32)>,
     pub forcing_bits: Vec<u64>,
 }
-
 impl ThreadLocalContext {
     pub fn new(game_state: GomokuGameState, thread_id: usize) -> Self {
         let num_words = game_state.bitboard.num_words();

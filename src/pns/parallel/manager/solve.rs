@@ -5,7 +5,6 @@ use crate::{
     alloc_stats::AllocTrackingGuard,
     pns::parallel::{context::ThreadLocalContext, shared_tree::SharedTree, worker::Worker},
 };
-
 impl ParallelSolver {
     #[must_use]
     pub fn solve(&self, verbose: bool) -> bool {
@@ -31,7 +30,6 @@ impl ParallelSolver {
             return tree.root.get_pn() == 0;
         }
         let handles = self.spawn_workers(&tree);
-
         Self::wait_for_workers(handles);
         let elapsed = start_time.elapsed().as_secs_f64();
         if verbose {

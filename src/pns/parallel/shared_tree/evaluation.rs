@@ -2,7 +2,6 @@ use std::{sync::atomic::Ordering, time::Instant};
 
 use super::{SharedTree, duration_to_ns};
 use crate::pns::parallel::{context::ThreadLocalContext, node::ParallelNode};
-
 impl SharedTree {
     pub fn evaluate_node(&self, node: &ParallelNode, ctx: &ThreadLocalContext) {
         let start = Instant::now();
@@ -14,7 +13,8 @@ impl SharedTree {
             node.set_pn(entry.pn);
             node.set_dn(entry.dn);
             node.set_win_len(entry.win_len);
-            self.stats.eval_time_ns
+            self.stats
+                .eval_time_ns
                 .fetch_add(duration_to_ns(start.elapsed()), Ordering::Relaxed);
             return;
         }
@@ -55,7 +55,8 @@ impl SharedTree {
             node.set_dn(entry.dn);
             node.set_win_len(entry.win_len);
         }
-        self.stats.eval_time_ns
+        self.stats
+            .eval_time_ns
             .fetch_add(duration_to_ns(start.elapsed()), Ordering::Relaxed);
     }
 }

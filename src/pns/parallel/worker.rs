@@ -10,7 +10,6 @@ pub struct Worker {
     pub tree: Arc<SharedTree>,
     pub ctx: ThreadLocalContext,
 }
-
 impl Worker {
     pub const fn new(tree: Arc<SharedTree>, ctx: ThreadLocalContext) -> Self {
         Self { tree, ctx }
@@ -49,7 +48,6 @@ impl Worker {
             self.tree.expand_node(&leaf_node, &mut self.ctx);
             self.tree.update_node_pdn(&leaf_node);
         }
-
         self.backpropagate();
     }
 

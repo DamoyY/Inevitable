@@ -14,7 +14,6 @@ macro_rules! for_each_move_apply_timing {
         }
     };
 }
-
 pub mod alloc_stats;
 pub mod config;
 pub mod game_state;

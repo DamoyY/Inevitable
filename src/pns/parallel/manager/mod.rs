@@ -22,14 +22,12 @@ pub struct ParallelSolver {
     board_size: usize,
     win_len: usize,
 }
-
 #[derive(Clone, Copy)]
 pub struct SearchParams {
     pub board_size: usize,
     pub win_len: usize,
     pub num_threads: usize,
 }
-
 impl SearchParams {
     #[must_use]
     pub const fn new(board_size: usize, win_len: usize, num_threads: usize) -> Self {
@@ -40,7 +38,6 @@ impl SearchParams {
         }
     }
 }
-
 impl ParallelSolver {
     #[must_use]
     pub fn new(
@@ -97,7 +94,6 @@ impl ParallelSolver {
             GomokuGameState::new(initial_board, params.board_size, hasher, 1, params.win_len);
         let root_hash = game_state.get_canonical_hash();
         let root_pos_hash = game_state.get_hash();
-
         let tree = Arc::new(SharedTree::with_tt_and_stop(
             1,
             root_hash,
@@ -107,9 +103,7 @@ impl ParallelSolver {
             existing_tt,
             existing_node_table,
         ));
-
         tree.evaluate_node(&tree.root, &ThreadLocalContext::new(game_state.clone(), 0));
-
         Self {
             tree,
             base_game_state: game_state,

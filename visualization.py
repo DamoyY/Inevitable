@@ -1,13 +1,11 @@
-import os
+from matplotlib.pyplot import rcParams, close, subplots, tight_layout
+from matplotlib.font_manager import fontManager, FontProperties
+from pandas import read_csv, to_numeric
+from colorsys import hls_to_rgb
 from datetime import datetime
-import colorsys
-import math
-
+from math import pi, atan2
 import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
-from matplotlib import font_manager
-
+import os
 
 CSV_PATH = "log.csv"
 OUTPUT_DIR = "visualization"
@@ -21,8 +19,6 @@ CJK_FONT_CANDIDATES = [
     "Noto Sans CJK TC",
     "Noto Sans CJK JP",
     "Source Han Sans SC",
-    "WenQuanYi Micro Hei",
-    "WenQuanYi Zen Hei",
     "Arial Unicode MS",
 ]
 FALLBACK_FONTS = ["DejaVu Sans"]
@@ -58,15 +54,15 @@ def _rgb_to_oklab(rgb):
 def _oklab_to_oklch(lab):
     l_val, a, b = lab
     c = (a * a + b * b) ** 0.5
-    h = math.atan2(b, a)
+    h = atan2(b, a)
     if h < 0:
-        h += 2 * math.pi
+        h += 2 * pi
     return (l_val, c, h)
 
 
 def _oklch_distance(c1, c2):
     hue_diff = abs(c1[2] - c2[2])
-    hue_wrap = min(hue_diff, 2 * math.pi - hue_diff)
+    hue_wrap = min(hue_diff, 2 * pi - hue_diff)
     hue_term = hue_wrap * ((c1[1] + c2[1]) / 2)
     return ((c1[0] - c2[0]) ** 2 + (c1[1] - c2[1]) ** 2 + hue_term**2) ** 0.5
 
@@ -83,7 +79,7 @@ def generate_distinct_colors(count):
         for lightness_value in lightness:
             for saturation_value in saturation:
                 candidates.append(
-                    colorsys.hls_to_rgb(float(h), lightness_value, saturation_value)
+                    hls_to_rgb(float(h), lightness_value, saturation_value)
                 )
     oklch_values = [_oklab_to_oklch(_rgb_to_oklab(c)) for c in candidates]
     gray_oklch = _oklab_to_oklch(_rgb_to_oklab((0.5, 0.5, 0.5)))
@@ -110,7 +106,7 @@ def generate_distinct_colors(count):
 
 
 def _load_log(csv_path):
-    head = pd.read_csv(csv_path, nrows=0)
+    head = read_csv(csv_path, nrows=0)
     all_cols = list(head.columns)
     time_cols = [c for c in all_cols if "耗时" in str(c)]
     extra_cols = []
@@ -119,7 +115,7 @@ def _load_log(csv_path):
     if "深度" in all_cols:
         extra_cols.append("深度")
     usecols = time_cols + extra_cols
-    df = pd.read_csv(csv_path, usecols=usecols)
+    df = read_csv(csv_path, usecols=usecols)
     time_cols = [c for c in df.columns if "耗时" in str(c)]
     return df, time_cols
 
@@ -135,7 +131,7 @@ def _build_x_axis(df, plot_df):
         )
         return x, x_labels, use_round_depth
     if "深度" in df.columns:
-        x = pd.to_numeric(df["深度"], errors="coerce")
+        x = to_numeric(df["深度"], errors="coerce")
         return x, None, use_round_depth
     x = np.arange(1, len(plot_df) + 1)
     return x, None, use_round_depth
@@ -156,8 +152,8 @@ def _load_custom_fonts():
         if not os.path.isfile(path):
             continue
         try:
-            font_manager.fontManager.addfont(path)
-            name = font_manager.FontProperties(fname=path).get_name()
+            fontManager.addfont(path)
+            name = FontProperties(fname=path).get_name()
         except Exception:
             continue
         loaded_names.append(name)
@@ -166,7 +162,7 @@ def _load_custom_fonts():
 
 def _resolve_font_families():
     custom_fonts = _load_custom_fonts()
-    available = {f.name for f in font_manager.fontManager.ttflist}
+    available = {f.name for f in fontManager.ttflist}
     selected = []
     for name in custom_fonts + CJK_FONT_CANDIDATES + FALLBACK_FONTS:
         if name in available and name not in selected:
@@ -180,21 +176,21 @@ def _resolve_font_families():
 
 
 def _set_plot_style():
-    plt.rcParams["axes.unicode_minus"] = False
+    rcParams["axes.unicode_minus"] = False
     font_families, has_cjk = _resolve_font_families()
-    plt.rcParams["font.sans-serif"] = font_families
-    plt.rcParams["font.size"] = 20
-    plt.rcParams["figure.facecolor"] = "black"
-    plt.rcParams["axes.facecolor"] = "black"
-    plt.rcParams["axes.edgecolor"] = "white"
-    plt.rcParams["axes.labelcolor"] = "white"
-    plt.rcParams["xtick.color"] = "white"
-    plt.rcParams["ytick.color"] = "white"
-    plt.rcParams["text.color"] = "white"
-    plt.rcParams["legend.facecolor"] = "black"
-    plt.rcParams["legend.edgecolor"] = "white"
-    plt.rcParams["legend.labelcolor"] = "white"
-    plt.rcParams["grid.color"] = "gray"
+    rcParams["font.sans-serif"] = font_families
+    rcParams["font.size"] = 20
+    rcParams["figure.facecolor"] = "black"
+    rcParams["axes.facecolor"] = "black"
+    rcParams["axes.edgecolor"] = "white"
+    rcParams["axes.labelcolor"] = "white"
+    rcParams["xtick.color"] = "white"
+    rcParams["ytick.color"] = "white"
+    rcParams["text.color"] = "white"
+    rcParams["legend.facecolor"] = "black"
+    rcParams["legend.edgecolor"] = "white"
+    rcParams["legend.labelcolor"] = "white"
+    rcParams["grid.color"] = "gray"
 
 
 def _plot_absolute(ax, x, series_values, time_cols, colors):
@@ -260,30 +256,32 @@ def _apply_xticks(ax, x, x_labels, use_round_depth):
         ax.set_xticks(x, labels=x_labels, fontsize=20, rotation=45, ha="right")
     else:
         ax.set_xticks(x)
-        ax.set_xticklabels(ax.get_xticks(), fontsize=20, rotation=45, ha="right")
+        ax.set_xticklabels(
+            ax.get_xticks(), fontsize=20, rotation=45, ha="right"
+        )
 
 
 def _save_figure(fig):
     timestamp = datetime.now().strftime("%m%d%H%M")
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     svg_path = os.path.join(OUTPUT_DIR, f"{timestamp}.svg")
-    fig.savefig(svg_path, bbox_inches="tight", facecolor="black", edgecolor="none")
-    plt.close(fig)
+    fig.savefig(
+        svg_path, bbox_inches="tight", facecolor="black", edgecolor="none"
+    )
+    close(fig)
     return svg_path
 
 
 def main():
     df, time_cols = _load_log(CSV_PATH)
-    if not time_cols:
-        raise ValueError("未找到包含“耗时”的列")
     plot_df = (
         df[time_cols]
-        .apply(pd.to_numeric, errors="coerce", downcast="float")
+        .apply(to_numeric, errors="coerce", downcast="float")
         .mul(TIME_UNIT_SCALE)
     )
     x, x_labels, use_round_depth = _build_x_axis(df, plot_df)
     _set_plot_style()
-    fig, axes = plt.subplots(
+    fig, axes = subplots(
         2,
         1,
         figsize=FIG_SIZE,
@@ -307,7 +305,7 @@ def main():
     _apply_xticks(axes[1], x, x_labels, use_round_depth)
     for ax in axes:
         ax.tick_params(axis="y", labelsize=20)
-    plt.tight_layout(rect=(0, 0, 1, 1))
+    tight_layout(rect=(0, 0, 1, 1))
     _save_figure(fig)
 
 

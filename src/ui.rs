@@ -15,7 +15,6 @@ use crate::{
     pns::{NodeTable, ParallelSolver, SearchParams, TranspositionTable},
     utils::board_index,
 };
-
 pub fn print_board(board: &[u8], board_size: usize) {
     print!("  ");
     for i in 0..board_size {
@@ -76,7 +75,6 @@ pub fn play_game(exit_flag: &Arc<AtomicBool>) {
         }
     }
 }
-
 fn print_intro(config: &Config) {
     println!(
         "棋盘大小: {size}x{size}, 获胜条件: {win_len}子连珠",
@@ -89,7 +87,6 @@ fn print_intro(config: &Config) {
     );
     println!("程序执黑 (X)先手，您执白 (O)后手。");
 }
-
 fn ai_turn(
     board: &mut [u8],
     config: &Config,
@@ -142,7 +139,6 @@ fn ai_turn(
     }
     false
 }
-
 fn player_turn(board: &mut [u8], board_size: usize, exit_flag: &AtomicBool) -> bool {
     println!("\n轮到您 (O) 落子。");
     let Some(mov) = read_player_move(board, board_size, exit_flag) else {
@@ -151,7 +147,6 @@ fn player_turn(board: &mut [u8], board_size: usize, exit_flag: &AtomicBool) -> b
     board[board_index(board_size, mov.0, mov.1)] = 2;
     false
 }
-
 fn read_player_move(
     board: &[u8],
     board_size: usize,
@@ -196,12 +191,10 @@ fn read_player_move(
         }
     }
 }
-
 enum InputError {
     Exit,
     Io,
 }
-
 fn read_line_with_exit(exit_flag: &AtomicBool) -> Result<String, InputError> {
     let (tx, rx) = mpsc::channel();
     thread::spawn(move || {
@@ -222,7 +215,6 @@ fn read_line_with_exit(exit_flag: &AtomicBool) -> Result<String, InputError> {
         }
     }
 }
-
 fn check_win(board: &[u8], board_size: usize, win_len: usize, player: u8) -> bool {
     let hasher = Arc::new(ZobristHasher::new(board_size));
     let game_state = GomokuGameState::new(board.to_vec(), board_size, hasher, 1, win_len);

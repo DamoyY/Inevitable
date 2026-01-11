@@ -1,5 +1,4 @@
 use super::{Coord, GomokuGameState};
-
 impl GomokuGameState {
     pub(crate) fn make_proximity_maps(board_size: usize) -> [Vec<f32>; 2] {
         [
@@ -137,7 +136,6 @@ impl GomokuGameState {
         const SCORE_BLOCK_LIVE_FOUR: f32 = 400_000.0;
         const SCORE_BLOCK_BLOCKED_FOUR: f32 = 12_000.0;
         const SCORE_BLOCK_LIVE_THREE: f32 = 8_000.0;
-
         scored_moves.clear();
         if moves_to_score.is_empty() {
             return;
@@ -151,9 +149,7 @@ impl GomokuGameState {
         let player_idx = usize::from(player).saturating_sub(1);
         if player_idx < self.proximity_maps.len() {
             let proximity_map = &self.proximity_maps[player_idx];
-            for (total_cell, &proximity_val) in
-                score_buffer.iter_mut().zip(proximity_map.iter())
-            {
+            for (total_cell, &proximity_val) in score_buffer.iter_mut().zip(proximity_map.iter()) {
                 *total_cell += proximity_val * self.proximity_scale;
             }
         }

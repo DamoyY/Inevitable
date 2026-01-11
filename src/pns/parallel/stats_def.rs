@@ -3,16 +3,13 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use serde::Serialize;
 
 use crate::game_state::MoveApplyTiming;
-
 pub fn to_f64(value: u64) -> f64 {
     let value_u32 = u32::try_from(value).unwrap_or(u32::MAX);
     f64::from(value_u32)
 }
-
 fn total_us(total_ns: u64) -> f64 {
     to_f64(total_ns) / 1_000.0
 }
-
 macro_rules! add_move_apply_timing {
     ( $( $field:ident => $stat_field:ident ),* $(,)? ) => {
         pub const fn add_move_apply_timing(&mut self, timing: &MoveApplyTiming) {
@@ -20,7 +17,6 @@ macro_rules! add_move_apply_timing {
         }
     };
 }
-
 macro_rules! define_metrics {
     (
         counts: { $( $cname:ident => $cdesc:expr ),* $(,)? }
@@ -31,7 +27,6 @@ macro_rules! define_metrics {
             $(pub $cname: AtomicU64,)*
             $(pub $tname: AtomicU64,)*
         }
-
         impl TreeStatsAtomic {
             #[must_use]
             pub const fn new() -> Self {
@@ -40,7 +35,6 @@ macro_rules! define_metrics {
                     $($tname: AtomicU64::new(0),)*
                 }
             }
-
             #[must_use]
             pub fn snapshot(&self) -> TreeStatsSnapshot {
                 TreeStatsSnapshot {
@@ -48,19 +42,16 @@ macro_rules! define_metrics {
                     $($tname: self.$tname.load(Ordering::Relaxed),)*
                 }
             }
-
             pub fn merge(&self, acc: &TreeStatsAccumulator) {
                 $(self.$cname.fetch_add(acc.$cname, Ordering::Relaxed);)*
                 $(self.$tname.fetch_add(acc.$tname, Ordering::Relaxed);)*
             }
         }
-
         #[derive(Clone, Copy, Default, Serialize)]
         pub struct TreeStatsSnapshot {
             $(pub $cname: u64,)*
             $(pub $tname: u64,)*
         }
-
         impl TreeStatsSnapshot {
             #[must_use]
             pub const fn delta_since(&self, prev: &Self) -> Self {
@@ -70,37 +61,30 @@ macro_rules! define_metrics {
                 }
             }
         }
-
         #[derive(Default)]
         pub struct TreeStatsAccumulator {
             $(pub $cname: u64,)*
             $(pub $tname: u64,)*
         }
-
         impl TreeStatsAccumulator {
             crate::for_each_move_apply_timing!(add_move_apply_timing);
         }
-
         pub struct TimingStats {
             values: Vec<f64>,
         }
-
         impl TimingStats {
             #[must_use]
             pub fn from_snapshot(snapshot: &TreeStatsSnapshot) -> Self {
                 let values = vec![$(($calc)(snapshot),)*];
                 Self { values }
             }
-
             pub const fn csv_headers() -> &'static [&'static str] {
                 &[$($ldesc,)*]
             }
-
             #[must_use]
             pub fn csv_values(&self) -> &[f64] {
                 &self.values
             }
-
             #[must_use]
             pub fn sum_us(&self) -> f64 {
                 Self::csv_headers()
@@ -113,7 +97,6 @@ macro_rules! define_metrics {
         }
     };
 }
-
 define_metrics! {
     counts: {
         iterations => "迭代次数",

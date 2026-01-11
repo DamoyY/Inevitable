@@ -7,26 +7,33 @@ use std::{
     },
 };
 
-use snapshot::{LogSnapshot, capture_snapshot};
-
 use super::{
     super::{TimingStats, TreeStatsSnapshot},
     SharedTree,
     metrics::{calc_hit_rates, format_sci_f64, format_sci_u64, format_sci_usize},
 };
-
-mod snapshot;
-
 const LOG_FILE_NAME: &str = "log.csv";
 static LOG_FILE_TRUNCATED: AtomicBool = AtomicBool::new(false);
 static LAST_LOG_STATE: Mutex<Option<LastLogState>> = Mutex::new(None);
-
+struct LogSnapshot {
+    stats: TreeStatsSnapshot,
+    tt_size: usize,
+    node_table_size: usize,
+    depth_limit: Option<usize>,
+}
+fn capture_snapshot(tree: &SharedTree) -> LogSnapshot {
+    LogSnapshot {
+        stats: tree.stats_snapshot(),
+        tt_size: tree.get_tt_size(),
+        node_table_size: tree.get_node_table_size(),
+        depth_limit: tree.depth_limit,
+    }
+}
 #[derive(Clone, Copy)]
 struct LastLogState {
     stats: TreeStatsSnapshot,
     elapsed_secs: f64,
 }
-
 fn delta_since_last(stats: TreeStatsSnapshot, elapsed_secs: f64) -> (TreeStatsSnapshot, f64) {
     let (delta_stats, delta_elapsed) = {
         let mut guard = match LAST_LOG_STATE.lock() {
@@ -39,19 +46,15 @@ fn delta_since_last(stats: TreeStatsSnapshot, elapsed_secs: f64) -> (TreeStatsSn
             elapsed_secs,
         });
         drop(guard);
-        prev.map_or(
-            (stats, elapsed_secs),
-            |prev| {
-                (
-                    stats.delta_since(&prev.stats),
-                    (elapsed_secs - prev.elapsed_secs).max(0.0),
-                )
-            },
-        )
+        prev.map_or((stats, elapsed_secs), |prev| {
+            (
+                stats.delta_since(&prev.stats),
+                (elapsed_secs - prev.elapsed_secs).max(0.0),
+            )
+        })
     };
     (delta_stats, delta_elapsed)
 }
-
 fn open_log_writer() -> io::Result<BufWriter<File>> {
     let truncate = !LOG_FILE_TRUNCATED.swap(true, Ordering::AcqRel);
     let mut options = OpenOptions::new();
@@ -70,7 +73,6 @@ fn open_log_writer() -> io::Result<BufWriter<File>> {
     }
     Ok(writer)
 }
-
 fn write_csv_header(writer: &mut impl Write) -> io::Result<()> {
     let mut headers = Vec::new();
     headers.extend([
@@ -92,7 +94,6 @@ fn write_csv_header(writer: &mut impl Write) -> io::Result<()> {
     headers.extend(["深度截断数", "提前剪枝数"]);
     writeln!(writer, "{}", headers.join(","))
 }
-
 fn write_log(
     writer: &mut impl Write,
     turn: usize,
@@ -132,14 +133,21 @@ fn write_log(
     fields.push(format_sci_u64(stats.early_cutoffs));
     writeln!(writer, "{}", fields.join(","))
 }
-
 pub(super) fn write_csv_log(tree: &SharedTree, turn: usize, elapsed_secs: f64) {
     let Ok(mut writer) = open_log_writer() else {
         return;
     };
     let snapshot = capture_snapshot(tree);
     let (delta_stats, delta_elapsed_secs) = delta_since_last(snapshot.stats, elapsed_secs);
-    if write_log(&mut writer, turn, delta_elapsed_secs, &snapshot, delta_stats).is_ok() {
+    if write_log(
+        &mut writer,
+        turn,
+        delta_elapsed_secs,
+        &snapshot,
+        delta_stats,
+    )
+    .is_ok()
+    {
         let _ = writer.flush();
     }
 }

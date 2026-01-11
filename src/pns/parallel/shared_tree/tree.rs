@@ -13,7 +13,6 @@ use super::{
     },
     NodeTable, ShardedMap, TranspositionTable,
 };
-
 pub struct SharedTree {
     pub root: NodeRef,
     pub transposition_table: TranspositionTable,
@@ -23,7 +22,6 @@ pub struct SharedTree {
     pub(super) stop_flag: Arc<AtomicBool>,
     pub stats: TreeStatsAtomic,
 }
-
 impl SharedTree {
     fn push_unvisited_children<F>(
         node: &NodeRef,
@@ -113,54 +111,43 @@ impl SharedTree {
         {
             return;
         }
-
         self.depth_limit = Some(new_depth_limit);
         self.solved.store(false, Ordering::Release);
-
         let mut visited = HashSet::new();
         let mut queue = VecDeque::new();
         queue.push_back(Arc::clone(&self.root));
         visited.insert(Arc::as_ptr(&self.root));
-
         while let Some(node) = queue.pop_front() {
             node.set_is_depth_limited(node.depth >= new_depth_limit);
-
             if node.is_depth_cutoff() && node.depth < new_depth_limit {
                 node.set_depth_cutoff(false);
                 node.set_pn(1);
                 node.set_dn(1);
                 node.set_win_len(u64::MAX);
-
                 let mut children_guard = node.children.write();
                 if matches!(children_guard.as_ref(), Some(children) if children.is_empty()) {
                     *children_guard = None;
                 }
             }
-
             Self::push_unvisited_children(&node, &mut visited, |child| {
                 queue.push_back(child);
             });
         }
-
         let mut stack = Vec::new();
         let mut visited = HashSet::new();
         let mut postorder = Vec::new();
-
         stack.push((Arc::clone(&self.root), false));
         visited.insert(Arc::as_ptr(&self.root));
-
         while let Some((node, processed)) = stack.pop() {
             if processed {
                 postorder.push(node);
                 continue;
             }
-
             stack.push((Arc::clone(&node), true));
             Self::push_unvisited_children(&node, &mut visited, |child| {
                 stack.push((child, false));
             });
         }
-
         for node in postorder {
             self.update_node_pdn(&node);
         }

@@ -1,17 +1,14 @@
 const NONE_INDEX: usize = usize::MAX;
-
 #[derive(Clone, Copy)]
 struct Bucket {
     head: usize,
 }
-
 #[derive(Clone, Copy)]
 struct BucketNode {
     prev: usize,
     next: usize,
     bucket: usize,
 }
-
 #[derive(Clone)]
 pub(super) struct PatternBuckets {
     win_len: usize,
@@ -19,7 +16,6 @@ pub(super) struct PatternBuckets {
     buckets: Vec<Bucket>,
     nodes: Vec<BucketNode>,
 }
-
 impl PatternBuckets {
     pub(super) const fn empty() -> Self {
         Self {
@@ -113,13 +109,11 @@ impl PatternBuckets {
         }
     }
 }
-
 pub(super) struct PatternBucketIter<'a> {
     current: usize,
     nodes: &'a [BucketNode],
     window_count: usize,
 }
-
 impl Iterator for PatternBucketIter<'_> {
     type Item = usize;
 
