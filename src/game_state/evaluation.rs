@@ -116,6 +116,18 @@ impl GomokuGameState {
         moves_to_score: &[Coord],
         score_buffer: &mut Vec<f32>,
     ) -> Vec<(Coord, f32)> {
+        let mut scored_moves = Vec::with_capacity(moves_to_score.len());
+        self.score_moves_into(player, moves_to_score, score_buffer, &mut scored_moves);
+        scored_moves
+    }
+
+    pub(crate) fn score_moves_into(
+        &self,
+        player: u8,
+        moves_to_score: &[Coord],
+        score_buffer: &mut Vec<f32>,
+        scored_moves: &mut Vec<(Coord, f32)>,
+    ) {
         const SCORE_WIN: f32 = 10_000_000.0;
         const SCORE_LIVE_FOUR: f32 = 500_000.0;
         const SCORE_BLOCKED_FOUR: f32 = 15_000.0;
@@ -126,8 +138,9 @@ impl GomokuGameState {
         const SCORE_BLOCK_BLOCKED_FOUR: f32 = 12_000.0;
         const SCORE_BLOCK_LIVE_THREE: f32 = 8_000.0;
 
+        scored_moves.clear();
         if moves_to_score.is_empty() {
-            return Vec::new();
+            return;
         }
         let board_size = self.board_size;
         let needed_len = board_size.saturating_mul(board_size);
@@ -165,12 +178,9 @@ impl GomokuGameState {
                 }
             }
         }
-        moves_to_score
-            .iter()
-            .map(|&(r, c)| {
-                let idx = r.saturating_mul(board_size).saturating_add(c);
-                ((r, c), score_buffer[idx])
-            })
-            .collect()
+        scored_moves.extend(moves_to_score.iter().map(|&(r, c)| {
+            let idx = r.saturating_mul(board_size).saturating_add(c);
+            ((r, c), score_buffer[idx])
+        }));
     }
 }

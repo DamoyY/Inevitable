@@ -1,4 +1,4 @@
-use five_stone::alloc_stats::TrackingAllocator;
+use inevitable::alloc_stats::TrackingAllocator;
 #[global_allocator]
 static GLOBAL: TrackingAllocator = TrackingAllocator::new();
 use std::sync::{
@@ -6,7 +6,7 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
 };
 
-use five_stone::ui;
+use inevitable::ui;
 fn main() {
     let exit_flag = Arc::new(AtomicBool::new(false));
     let flag = exit_flag.clone();

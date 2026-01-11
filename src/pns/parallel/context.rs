@@ -15,6 +15,9 @@ pub struct ThreadLocalContext {
     pub thread_id: usize,
     pub bitboard_workspace: BitboardWorkspace,
     pub score_buffer: Vec<f32>,
+    pub legal_moves: Vec<(usize, usize)>,
+    pub scored_moves: Vec<((usize, usize), f32)>,
+    pub forcing_bits: Vec<u64>,
 }
 
 impl ThreadLocalContext {
@@ -27,6 +30,9 @@ impl ThreadLocalContext {
             thread_id,
             bitboard_workspace: BitboardWorkspace::new(num_words),
             score_buffer: vec![0.0; board_cells],
+            legal_moves: Vec::with_capacity(256),
+            scored_moves: Vec::with_capacity(256),
+            forcing_bits: vec![0u64; num_words],
         }
     }
 
@@ -79,12 +85,14 @@ impl ThreadLocalContext {
         self.game_state.get_hash()
     }
 
-    pub fn get_legal_moves(&mut self, player: u8) -> Vec<(usize, usize)> {
-        self.game_state
-            .get_legal_moves(
-                player,
-                &mut self.bitboard_workspace,
-                &mut self.score_buffer,
-            )
+    pub fn refresh_legal_moves(&mut self, player: u8) {
+        self.game_state.get_legal_moves_into(
+            player,
+            &mut self.bitboard_workspace,
+            &mut self.score_buffer,
+            &mut self.forcing_bits,
+            &mut self.scored_moves,
+            &mut self.legal_moves,
+        );
     }
 }

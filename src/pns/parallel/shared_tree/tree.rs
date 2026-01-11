@@ -1,19 +1,17 @@
 use std::{
-    collections::{HashMap, HashSet, VecDeque},
+    collections::{HashSet, VecDeque},
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
     },
 };
 
-use parking_lot::RwLock;
-
 use super::{
     super::{
         TreeStatsAtomic,
         node::{ChildRef, NodeRef, ParallelNode},
     },
-    NodeTable, TranspositionTable,
+    NodeTable, ShardedMap, TranspositionTable,
 };
 
 pub struct SharedTree {
@@ -93,14 +91,9 @@ impl SharedTree {
         existing_node_table: Option<NodeTable>,
     ) -> Self {
         let root = Arc::new(ParallelNode::new(root_player, 0, root_hash, false));
-        let node_table =
-            existing_node_table.unwrap_or_else(|| Arc::new(RwLock::new(HashMap::new())));
-        {
-            let mut node_table_guard = node_table.write();
-            node_table_guard.insert((root_pos_hash, 0), Arc::clone(&root));
-        }
-        let transposition_table =
-            existing_tt.unwrap_or_else(|| Arc::new(RwLock::new(HashMap::new())));
+        let node_table = existing_node_table.unwrap_or_else(|| Arc::new(ShardedMap::new()));
+        node_table.insert((root_pos_hash, 0), Arc::clone(&root));
+        let transposition_table = existing_tt.unwrap_or_else(|| Arc::new(ShardedMap::new()));
         let stats = TreeStatsAtomic::new();
         stats.nodes_created.store(1, Ordering::Relaxed);
         Self {

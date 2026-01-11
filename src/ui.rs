@@ -1,5 +1,4 @@
 use std::{
-    collections::HashMap,
     io::{self, Write},
     sync::{
         Arc,
@@ -9,8 +8,6 @@ use std::{
     thread,
     time::Duration,
 };
-
-use parking_lot::RwLock;
 
 use crate::{
     config::Config,
@@ -46,7 +43,7 @@ pub fn play_game(exit_flag: &Arc<AtomicBool>) {
     let mut board = vec![0u8; board_size.saturating_mul(board_size)];
     let mut current_player = 1u8;
     let mut tt: Option<TranspositionTable> = None;
-    let mut node_table: NodeTable = Arc::new(RwLock::new(HashMap::new()));
+    let mut node_table: NodeTable = NodeTable::default();
     loop {
         if exit_flag.load(Ordering::SeqCst) {
             return;
@@ -104,7 +101,7 @@ fn ai_turn(
     if exit_flag.load(Ordering::SeqCst) {
         return true;
     }
-    node_table.write().clear();
+    node_table.clear();
     let board_size = config.board_size;
     let win_len = config.win_len;
     let num_threads = config.num_threads;

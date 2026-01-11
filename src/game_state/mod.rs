@@ -204,6 +204,23 @@ impl GomokuGameState {
         cells
     }
 
+    fn collect_forcing_moves_bits<I>(&self, window_indices: I, bits: &mut Vec<u64>)
+    where
+        I: IntoIterator<Item = usize>,
+    {
+        let num_words = self.bitboard.num_words();
+        if bits.len() != num_words {
+            bits.resize(num_words, 0);
+        }
+        bits.fill(0);
+        for window_idx in window_indices {
+            let window = &self.threat_index.all_windows[window_idx];
+            for &(r, c) in &window.empty_cells {
+                self.bitboard.set_in(bits, r, c);
+            }
+        }
+    }
+
     fn score_and_sort_moves(
         &self,
         player: u8,
@@ -213,6 +230,19 @@ impl GomokuGameState {
         let mut scored_moves = self.score_moves(player, moves, score_buffer);
         scored_moves.sort_unstable_by(|a, b| b.1.total_cmp(&a.1));
         scored_moves.into_iter().map(|(coord, _)| coord).collect()
+    }
+
+    fn score_and_sort_moves_in_place(
+        &self,
+        player: u8,
+        moves: &mut Vec<Coord>,
+        score_buffer: &mut Vec<f32>,
+        scored_moves: &mut Vec<(Coord, f32)>,
+    ) {
+        self.score_moves_into(player, moves, score_buffer, scored_moves);
+        scored_moves.sort_unstable_by(|a, b| b.1.total_cmp(&a.1));
+        moves.clear();
+        moves.extend(scored_moves.iter().map(|(coord, _)| *coord));
     }
 
     pub fn make_move(&mut self, mov: Coord, player: u8) {
@@ -343,5 +373,49 @@ impl GomokuGameState {
         }
         let empties: Vec<Coord> = self.bitboard.iter_bits(empty_bits).collect();
         self.score_and_sort_moves(player, &empties, score_buffer)
+    }
+
+    pub fn get_legal_moves_into(
+        &self,
+        player: u8,
+        workspace: &mut BitboardWorkspace,
+        score_buffer: &mut Vec<f32>,
+        forcing_bits: &mut Vec<u64>,
+        scored_moves: &mut Vec<(Coord, f32)>,
+        out_moves: &mut Vec<Coord>,
+    ) {
+        let opponent = 3 - player;
+        self.collect_forcing_moves_bits(
+            self.threat_index
+                .get_pattern_windows(player, self.win_len - 1, 0),
+            forcing_bits,
+        );
+        if !Bitboard::is_all_zeros(forcing_bits) {
+            out_moves.clear();
+            out_moves.extend(self.bitboard.iter_bits(forcing_bits));
+            return;
+        }
+
+        self.collect_forcing_moves_bits(
+            self.threat_index
+                .get_pattern_windows(opponent, self.win_len - 1, 0),
+            forcing_bits,
+        );
+        if !Bitboard::is_all_zeros(forcing_bits) {
+            out_moves.clear();
+            out_moves.extend(self.bitboard.iter_bits(forcing_bits));
+            self.score_and_sort_moves_in_place(player, out_moves, score_buffer, scored_moves);
+            return;
+        }
+
+        let (empty_bits, ..) = workspace.pads_mut();
+        self.bitboard.empty_into(empty_bits);
+        if Bitboard::is_all_zeros(empty_bits) {
+            out_moves.clear();
+            return;
+        }
+        out_moves.clear();
+        out_moves.extend(self.bitboard.iter_bits(empty_bits));
+        self.score_and_sort_moves_in_place(player, out_moves, score_buffer, scored_moves);
     }
 }

@@ -1,5 +1,5 @@
 [package]
-name = "Inevitable"
+name = "inevitable"
 version = "0.0.0"
 edition = "2024"
 
@@ -11,6 +11,8 @@ serde = { version = "*", features = ["derive"] }
 serde_yaml = "*"
 ctrlc = "*"
 smallvec = "*"
+hashbrown = "*"
+ahash = "*"
 
 [lints.clippy]
 all = "warn"

@@ -2,19 +2,15 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use serde::Serialize;
 
-use crate::{alloc_stats::AllocTimingSnapshot, game_state::MoveApplyTiming};
+use crate::game_state::MoveApplyTiming;
 
 pub fn to_f64(value: u64) -> f64 {
     let value_u32 = u32::try_from(value).unwrap_or(u32::MAX);
     f64::from(value_u32)
 }
 
-fn avg_us(total_ns: u64, count: u64) -> f64 {
-    if count > 0 {
-        to_f64(total_ns) / to_f64(count) / 1_000.0
-    } else {
-        0.0
-    }
+fn total_us(total_ns: u64) -> f64 {
+    to_f64(total_ns) / 1_000.0
 }
 
 macro_rules! add_move_apply_timing {
@@ -67,25 +63,11 @@ macro_rules! define_metrics {
 
         impl TreeStatsSnapshot {
             #[must_use]
-            pub const fn expand_other_ns(&self, alloc_timing: AllocTimingSnapshot) -> u64 {
-                self.expand_time_ns
-                    .saturating_sub(alloc_timing.total_ns())
-                    .saturating_sub(self.movegen_time_ns)
-                    .saturating_sub(self.board_update_time_ns)
-                    .saturating_sub(self.bitboard_update_time_ns)
-                    .saturating_sub(self.threat_index_update_time_ns)
-                    .saturating_sub(self.candidate_remove_time_ns)
-                    .saturating_sub(self.candidate_neighbor_time_ns)
-                    .saturating_sub(self.candidate_insert_time_ns)
-                    .saturating_sub(self.candidate_newly_added_time_ns)
-                    .saturating_sub(self.candidate_history_time_ns)
-                    .saturating_sub(self.hash_update_time_ns)
-                    .saturating_sub(self.move_undo_time_ns)
-                    .saturating_sub(self.hash_time_ns)
-                    .saturating_sub(self.children_lock_time_ns)
-                    .saturating_sub(self.node_table_lookup_time_ns)
-                    .saturating_sub(self.node_table_write_time_ns)
-                    .saturating_sub(self.eval_time_ns)
+            pub const fn delta_since(&self, prev: &Self) -> Self {
+                Self {
+                    $($cname: self.$cname.saturating_sub(prev.$cname),)*
+                    $($tname: self.$tname.saturating_sub(prev.$tname),)*
+                }
             }
         }
 
@@ -105,11 +87,8 @@ macro_rules! define_metrics {
 
         impl TimingStats {
             #[must_use]
-            pub fn from_snapshot(
-                snapshot: &TreeStatsSnapshot,
-                alloc_timing: AllocTimingSnapshot,
-            ) -> Self {
-                let values = vec![$(($calc)(snapshot, alloc_timing),)*];
+            pub fn from_snapshot(snapshot: &TreeStatsSnapshot) -> Self {
+                let values = vec![$(($calc)(snapshot),)*];
                 Self { values }
             }
 
@@ -120,6 +99,16 @@ macro_rules! define_metrics {
             #[must_use]
             pub fn csv_values(&self) -> &[f64] {
                 &self.values
+            }
+
+            #[must_use]
+            pub fn sum_us(&self) -> f64 {
+                Self::csv_headers()
+                    .iter()
+                    .zip(self.values.iter())
+                    .filter(|(header, _)| header.contains("耗时"))
+                    .map(|(_, value)| *value)
+                    .sum()
             }
         }
     };
@@ -144,15 +133,15 @@ define_metrics! {
         eval_time_ns => "评估耗时",
         expand_time_ns => "扩展耗时",
         movegen_time_ns => "走子生成耗时",
-        board_update_time_ns => "基础棋盘状态更新耗时",
+        board_update_time_ns => "基础棋盘更新耗时",
         bitboard_update_time_ns => "位棋盘更新耗时",
         threat_index_update_time_ns => "威胁索引增量更新耗时",
         candidate_remove_time_ns => "候选着法移除耗时",
         candidate_neighbor_time_ns => "邻居空位计算耗时",
         candidate_insert_time_ns => "候选着法更新耗时",
-        candidate_newly_added_time_ns => "新增候选着法记录耗时",
-        candidate_history_time_ns => "候选着法历史保存耗时",
-        hash_update_time_ns => "Zobrist哈希增量更新耗时",
+        candidate_newly_added_time_ns => "新增候选着法耗时",
+        candidate_history_time_ns => "候选着法保存耗时",
+        hash_update_time_ns => "Zobrist哈希更新耗时",
         move_undo_time_ns => "撤销耗时",
         hash_time_ns => "哈希耗时",
         children_lock_time_ns => "子节点锁耗时",
@@ -160,93 +149,60 @@ define_metrics! {
         node_table_write_time_ns => "NodeTable写入耗时",
     }
     timing_log: {
-        branch => ("平均分支数", |snapshot: &TreeStatsSnapshot, _| {
+        branch => ("平均分支数", |snapshot: &TreeStatsSnapshot| {
             if snapshot.expansions > 0 {
                 to_f64(snapshot.children_generated) / to_f64(snapshot.expansions)
             } else {
                 0.0
             }
         }),
-        alloc_us => (
-            "内存分配耗时",
-            |snapshot: &TreeStatsSnapshot, alloc_timing: AllocTimingSnapshot| {
-                avg_us(alloc_timing.alloc_ns, snapshot.expansions)
-            }
-        ),
-        dealloc_us => (
-            "内存释放耗时",
-            |snapshot: &TreeStatsSnapshot, alloc_timing: AllocTimingSnapshot| {
-                avg_us(alloc_timing.dealloc_ns, snapshot.expansions)
-            }
-        ),
-        realloc_us => (
-            "内存重分配耗时",
-            |snapshot: &TreeStatsSnapshot, alloc_timing: AllocTimingSnapshot| {
-                avg_us(alloc_timing.realloc_ns, snapshot.expansions)
-            }
-        ),
-        alloc_zeroed_us => (
-            "内存归零耗时",
-            |snapshot: &TreeStatsSnapshot, alloc_timing: AllocTimingSnapshot| {
-                avg_us(alloc_timing.alloc_zeroed_ns, snapshot.expansions)
-            }
-        ),
-        movegen_us => ("平均走子耗时", |snapshot: &TreeStatsSnapshot, _| {
-            avg_us(snapshot.movegen_time_ns, snapshot.expansions)
+        movegen_us => ("走子生成耗时", |snapshot: &TreeStatsSnapshot| {
+            total_us(snapshot.movegen_time_ns)
         }),
-        board_update_us => ("基础棋盘状态更新耗时", |snapshot: &TreeStatsSnapshot, _| {
-            avg_us(snapshot.board_update_time_ns, snapshot.expansions)
+        board_update_us => ("基础棋盘状态更新耗时", |snapshot: &TreeStatsSnapshot| {
+            total_us(snapshot.board_update_time_ns)
         }),
-        bitboard_update_us => ("位棋盘更新耗时", |snapshot: &TreeStatsSnapshot, _| {
-            avg_us(snapshot.bitboard_update_time_ns, snapshot.expansions)
+        bitboard_update_us => ("位棋盘更新耗时", |snapshot: &TreeStatsSnapshot| {
+            total_us(snapshot.bitboard_update_time_ns)
         }),
-        threat_index_update_us => ("威胁索引增量更新耗时", |snapshot: &TreeStatsSnapshot, _| {
-            avg_us(snapshot.threat_index_update_time_ns, snapshot.expansions)
+        threat_index_update_us => ("威胁索引增量更新耗时", |snapshot: &TreeStatsSnapshot| {
+            total_us(snapshot.threat_index_update_time_ns)
         }),
-        candidate_remove_us => ("候选着法移除耗时", |snapshot: &TreeStatsSnapshot, _| {
-            avg_us(snapshot.candidate_remove_time_ns, snapshot.expansions)
+        candidate_remove_us => ("候选着法移除耗时", |snapshot: &TreeStatsSnapshot| {
+            total_us(snapshot.candidate_remove_time_ns)
         }),
-        candidate_neighbor_us => ("邻居空位计算耗时", |snapshot: &TreeStatsSnapshot, _| {
-            avg_us(snapshot.candidate_neighbor_time_ns, snapshot.expansions)
+        candidate_neighbor_us => ("邻居空位计算耗时", |snapshot: &TreeStatsSnapshot| {
+            total_us(snapshot.candidate_neighbor_time_ns)
         }),
-        candidate_insert_us => ("候选着法更新耗时", |snapshot: &TreeStatsSnapshot, _| {
-            avg_us(snapshot.candidate_insert_time_ns, snapshot.expansions)
+        candidate_insert_us => ("候选着法更新耗时", |snapshot: &TreeStatsSnapshot| {
+            total_us(snapshot.candidate_insert_time_ns)
         }),
-        candidate_newly_added_us => ("新增候选着法记录耗时", |snapshot: &TreeStatsSnapshot, _| {
-            avg_us(snapshot.candidate_newly_added_time_ns, snapshot.expansions)
+        candidate_newly_added_us => ("新增候选着法记录耗时", |snapshot: &TreeStatsSnapshot| {
+            total_us(snapshot.candidate_newly_added_time_ns)
         }),
-        candidate_history_us => ("候选着法历史保存耗时", |snapshot: &TreeStatsSnapshot, _| {
-            avg_us(snapshot.candidate_history_time_ns, snapshot.expansions)
+        candidate_history_us => ("候选着法历史保存耗时", |snapshot: &TreeStatsSnapshot| {
+            total_us(snapshot.candidate_history_time_ns)
         }),
-        hash_update_us => ("Zobrist哈希增量更新耗时", |snapshot: &TreeStatsSnapshot, _| {
-            avg_us(snapshot.hash_update_time_ns, snapshot.expansions)
+        hash_update_us => ("Zobrist哈希增量更新耗时", |snapshot: &TreeStatsSnapshot| {
+            total_us(snapshot.hash_update_time_ns)
         }),
-        move_undo_us => ("平均撤销耗时", |snapshot: &TreeStatsSnapshot, _| {
-            avg_us(snapshot.move_undo_time_ns, snapshot.expansions)
+        move_undo_us => ("撤销耗时", |snapshot: &TreeStatsSnapshot| {
+            total_us(snapshot.move_undo_time_ns)
         }),
-        hash_us => ("平均哈希耗时", |snapshot: &TreeStatsSnapshot, _| {
-            avg_us(snapshot.hash_time_ns, snapshot.expansions)
+        hash_us => ("哈希耗时", |snapshot: &TreeStatsSnapshot| {
+            total_us(snapshot.hash_time_ns)
         }),
-        node_table_write_us => ("平均NodeTable写入耗时", |snapshot: &TreeStatsSnapshot, _| {
-            avg_us(snapshot.node_table_write_time_ns, snapshot.expansions)
+        node_table_write_us => ("NodeTable写入耗时", |snapshot: &TreeStatsSnapshot| {
+            total_us(snapshot.node_table_write_time_ns)
         }),
-        node_table_lookup_us => ("平均NodeTable检索耗时", |snapshot: &TreeStatsSnapshot, _| {
-            avg_us(snapshot.node_table_lookup_time_ns, snapshot.expansions)
+        node_table_lookup_us => ("NodeTable检索耗时", |snapshot: &TreeStatsSnapshot| {
+            total_us(snapshot.node_table_lookup_time_ns)
         }),
-        eval_us_per_expand => ("每扩展评估总耗耗时", |snapshot: &TreeStatsSnapshot, _| {
-            avg_us(snapshot.eval_time_ns, snapshot.expansions)
+        eval_us => ("评估耗时", |snapshot: &TreeStatsSnapshot| {
+            total_us(snapshot.eval_time_ns)
         }),
-        children_lock_us => ("平均子节点锁耗时", |snapshot: &TreeStatsSnapshot, _| {
-            avg_us(snapshot.children_lock_time_ns, snapshot.expansions)
-        }),
-        expand_other_us => (
-            "平均其他耗时",
-            |snapshot: &TreeStatsSnapshot, alloc_timing: AllocTimingSnapshot| {
-                avg_us(snapshot.expand_other_ns(alloc_timing), snapshot.expansions)
-            }
-        ),
-        eval_us => ("单次评估函数耗时", |snapshot: &TreeStatsSnapshot, _| {
-            avg_us(snapshot.eval_time_ns, snapshot.eval_calls)
+        children_lock_us => ("子节点锁耗时", |snapshot: &TreeStatsSnapshot| {
+            total_us(snapshot.children_lock_time_ns)
         }),
     }
 }

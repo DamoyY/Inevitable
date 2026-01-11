@@ -26,20 +26,16 @@ impl SharedTree {
     }
 
     pub fn get_tt_size(&self) -> usize {
-        self.transposition_table.read().len()
+        self.transposition_table.len()
     }
 
     pub fn get_node_table_size(&self) -> usize {
-        self.node_table.read().len()
+        self.node_table.len()
     }
 
     pub fn lookup_tt(&self, hash: u64, player: u8) -> Option<TTEntry> {
         self.stats.tt_lookups.fetch_add(1, Ordering::Relaxed);
-        let entry = self
-            .transposition_table
-            .read()
-            .get(&(hash, player))
-            .copied();
+        let entry = self.transposition_table.get(&(hash, player));
         if entry.is_some() {
             self.stats.tt_hits.fetch_add(1, Ordering::Relaxed);
         }
@@ -47,9 +43,7 @@ impl SharedTree {
     }
 
     pub fn store_tt(&self, hash: u64, player: u8, entry: TTEntry) {
-        self.transposition_table
-            .write()
-            .insert((hash, player), entry);
+        self.transposition_table.insert((hash, player), entry);
         self.stats.tt_stores.fetch_add(1, Ordering::Relaxed);
     }
 }

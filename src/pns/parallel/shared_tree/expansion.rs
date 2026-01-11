@@ -43,13 +43,14 @@ impl SharedTree {
         let depth = node.depth;
         let is_or_node = node.is_or_node();
         let movegen_start = Instant::now();
-        let legal_moves = ctx.get_legal_moves(player);
+        ctx.refresh_legal_moves(player);
+        let legal_moves = std::mem::take(&mut ctx.legal_moves);
         let legal_moves_len = legal_moves.len();
         self.stats.movegen_time_ns
             .fetch_add(duration_to_ns(movegen_start.elapsed()), Ordering::Relaxed);
-        let mut children = Vec::with_capacity(legal_moves.len());
+        let mut children = Vec::with_capacity(legal_moves_len);
         let mut local_stats = TreeStatsAccumulator::default();
-        for mov in legal_moves {
+        for &mov in &legal_moves {
             let move_timing = ctx.make_move_with_timing(mov, player);
             local_stats.add_move_apply_timing(&move_timing);
             let pos_hash_start = Instant::now();
@@ -75,6 +76,7 @@ impl SharedTree {
                 break;
             }
         }
+        ctx.legal_moves = legal_moves;
         self.stats.merge(&local_stats);
         if children.len() < legal_moves_len {
             self.stats.early_cutoffs.fetch_add(1, Ordering::Relaxed);
@@ -97,10 +99,7 @@ impl SharedTree {
         is_depth_limited: bool,
     ) -> Arc<ParallelNode> {
         let lookup_start = Instant::now();
-        let existing_child = {
-            let node_table = self.node_table.read();
-            node_table.get(&node_key).map(Arc::clone)
-        };
+        let existing_child = self.node_table.get(&node_key);
         self.stats.node_table_lookup_time_ns
             .fetch_add(duration_to_ns(lookup_start.elapsed()), Ordering::Relaxed);
         existing_child.map_or_else(
@@ -119,10 +118,7 @@ impl SharedTree {
                 ));
                 self.evaluate_node(&child, ctx);
                 let insert_start = Instant::now();
-                {
-                    let mut node_table = self.node_table.write();
-                    node_table.insert(node_key, Arc::clone(&child));
-                }
+                self.node_table.insert(node_key, Arc::clone(&child));
                 self.stats.node_table_write_time_ns
                     .fetch_add(duration_to_ns(insert_start.elapsed()), Ordering::Relaxed);
                 self.stats.nodes_created.fetch_add(1, Ordering::Relaxed);

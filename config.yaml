@@ -2,4 +2,4 @@ board_size: 6
 win_len: 5
 initial_depth_limit: 0
 verbose: true
-num_threads: 6
+num_threads: 0

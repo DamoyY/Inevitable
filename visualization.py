@@ -6,14 +6,30 @@ import math
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+from matplotlib import font_manager
 
 
 CSV_PATH = "log.csv"
 OUTPUT_DIR = "visualization"
-FONT_FAMILIES = ["Microsoft YaHei", "SimHei", "DejaVu Sans"]
+CJK_FONT_CANDIDATES = [
+    "Microsoft YaHei",
+    "SimHei",
+    "PingFang SC",
+    "Heiti SC",
+    "STHeiti",
+    "Noto Sans CJK SC",
+    "Noto Sans CJK TC",
+    "Noto Sans CJK JP",
+    "Source Han Sans SC",
+    "WenQuanYi Micro Hei",
+    "WenQuanYi Zen Hei",
+    "Arial Unicode MS",
+]
+FALLBACK_FONTS = ["DejaVu Sans"]
 FIG_SIZE = (16, 16)
 BAR_WIDTH = 0.95
-Y_ABS_LIMIT = (-200, 200)
+TIME_UNIT_SCALE = 1e-6
+Y_ABS_LIMIT = (-2e7 * TIME_UNIT_SCALE, 2e7 * TIME_UNIT_SCALE)
 
 
 def _srgb_to_linear(c):
@@ -67,9 +83,7 @@ def generate_distinct_colors(count):
         for lightness_value in lightness:
             for saturation_value in saturation:
                 candidates.append(
-                    colorsys.hls_to_rgb(
-                        float(h), lightness_value, saturation_value
-                    )
+                    colorsys.hls_to_rgb(float(h), lightness_value, saturation_value)
                 )
     oklch_values = [_oklab_to_oklch(_rgb_to_oklab(c)) for c in candidates]
     gray_oklch = _oklab_to_oklch(_rgb_to_oklab((0.5, 0.5, 0.5)))
@@ -127,10 +141,60 @@ def _build_x_axis(df, plot_df):
     return x, None, use_round_depth
 
 
+def _load_custom_fonts():
+    font_paths = []
+    for env_name in ("CJK_FONT_PATH", "CJK_FONT_PATHS", "FONT_PATH"):
+        value = os.environ.get(env_name)
+        if not value:
+            continue
+        for raw_path in value.split(os.pathsep):
+            path = raw_path.strip()
+            if path:
+                font_paths.append(path)
+    loaded_names = []
+    for path in font_paths:
+        if not os.path.isfile(path):
+            continue
+        try:
+            font_manager.fontManager.addfont(path)
+            name = font_manager.FontProperties(fname=path).get_name()
+        except Exception:
+            continue
+        loaded_names.append(name)
+    return loaded_names
+
+
+def _resolve_font_families():
+    custom_fonts = _load_custom_fonts()
+    available = {f.name for f in font_manager.fontManager.ttflist}
+    selected = []
+    for name in custom_fonts + CJK_FONT_CANDIDATES + FALLBACK_FONTS:
+        if name in available and name not in selected:
+            selected.append(name)
+    if not selected:
+        selected = FALLBACK_FONTS[:]
+    has_cjk = any(name in CJK_FONT_CANDIDATES for name in selected) or bool(
+        custom_fonts
+    )
+    return selected, has_cjk
+
+
 def _set_plot_style():
     plt.rcParams["axes.unicode_minus"] = False
-    plt.rcParams["font.sans-serif"] = FONT_FAMILIES
+    font_families, has_cjk = _resolve_font_families()
+    plt.rcParams["font.sans-serif"] = font_families
     plt.rcParams["font.size"] = 20
+    plt.rcParams["figure.facecolor"] = "black"
+    plt.rcParams["axes.facecolor"] = "black"
+    plt.rcParams["axes.edgecolor"] = "white"
+    plt.rcParams["axes.labelcolor"] = "white"
+    plt.rcParams["xtick.color"] = "white"
+    plt.rcParams["ytick.color"] = "white"
+    plt.rcParams["text.color"] = "white"
+    plt.rcParams["legend.facecolor"] = "black"
+    plt.rcParams["legend.edgecolor"] = "white"
+    plt.rcParams["legend.labelcolor"] = "white"
+    plt.rcParams["grid.color"] = "gray"
 
 
 def _plot_absolute(ax, x, series_values, time_cols, colors):
@@ -148,10 +212,10 @@ def _plot_absolute(ax, x, series_values, time_cols, colors):
             width=BAR_WIDTH,
         )
         bottom = bottom + values
-    ax.axhline(0, color="#000000", linewidth=1.5)
-    ax.set_ylabel("耗时（μs）", fontsize=26)
+    ax.axhline(0, color="white", linewidth=1.5)
+    ax.set_ylabel("耗时（秒）", fontsize=26)
     ax.set_ylim(*Y_ABS_LIMIT)
-    ax.grid(True, alpha=0.25)
+    ax.grid(True, alpha=1, color="gray")
     return total
 
 
@@ -188,7 +252,7 @@ def _plot_percent(ax, x, series_values, total, colors):
     ax.set_ylabel("占比（%）", fontsize=26)
     ax.set_xlabel("回合-深度", fontsize=26)
     ax.set_ylim(0, 100)
-    ax.grid(True, alpha=0.25)
+    ax.grid(True, alpha=1, color="gray")
 
 
 def _apply_xticks(ax, x, x_labels, use_round_depth):
@@ -196,26 +260,26 @@ def _apply_xticks(ax, x, x_labels, use_round_depth):
         ax.set_xticks(x, labels=x_labels, fontsize=20, rotation=45, ha="right")
     else:
         ax.set_xticks(x)
-        ax.set_xticklabels(
-            ax.get_xticks(), fontsize=20, rotation=45, ha="right"
-        )
+        ax.set_xticklabels(ax.get_xticks(), fontsize=20, rotation=45, ha="right")
 
 
 def _save_figure(fig):
     timestamp = datetime.now().strftime("%m%d%H%M")
     os.makedirs(OUTPUT_DIR, exist_ok=True)
-    png_path = os.path.join(OUTPUT_DIR, f"{timestamp}.png")
-    fig.savefig(png_path, bbox_inches="tight")
+    svg_path = os.path.join(OUTPUT_DIR, f"{timestamp}.svg")
+    fig.savefig(svg_path, bbox_inches="tight", facecolor="black", edgecolor="none")
     plt.close(fig)
-    return png_path
+    return svg_path
 
 
 def main():
     df, time_cols = _load_log(CSV_PATH)
     if not time_cols:
         raise ValueError("未找到包含“耗时”的列")
-    plot_df = df[time_cols].apply(
-        pd.to_numeric, errors="coerce", downcast="float"
+    plot_df = (
+        df[time_cols]
+        .apply(pd.to_numeric, errors="coerce", downcast="float")
+        .mul(TIME_UNIT_SCALE)
     )
     x, x_labels, use_round_depth = _build_x_axis(df, plot_df)
     _set_plot_style()
