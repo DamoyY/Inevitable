@@ -115,7 +115,8 @@ define_metrics! {
     timings: {
         eval_time_ns => "评估耗时",
         expand_time_ns => "扩展耗时",
-        movegen_time_ns => "走子生成耗时",
+        move_gen_candidates_time_ns => "候选耗时",
+        move_gen_scoring_time_ns => "评分排序耗时",
         board_update_time_ns => "基础棋盘更新耗时",
         bitboard_update_time_ns => "位棋盘更新耗时",
         threat_index_update_time_ns => "威胁索引更新耗时",
@@ -139,8 +140,11 @@ define_metrics! {
                 0.0
             }
         }),
-        movegen_us => ("走子生成耗时", |snapshot: &TreeStatsSnapshot| {
-            total_us(snapshot.movegen_time_ns)
+        move_gen_candidates_us => ("候选耗时", |snapshot: &TreeStatsSnapshot| {
+            total_us(snapshot.move_gen_candidates_time_ns)
+        }),
+        move_gen_scoring_us => ("评分排序耗时", |snapshot: &TreeStatsSnapshot| {
+            total_us(snapshot.move_gen_scoring_time_ns)
         }),
         board_update_us => ("基础棋盘状态更新耗时", |snapshot: &TreeStatsSnapshot| {
             total_us(snapshot.board_update_time_ns)

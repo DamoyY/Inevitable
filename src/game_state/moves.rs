@@ -1,6 +1,9 @@
 use std::{collections::HashSet, time::Instant};
 
-use super::{Bitboard, BitboardWorkspace, Coord, ForcingMoves, GomokuGameState, MoveApplyTiming};
+use super::{
+    Bitboard, BitboardWorkspace, Coord, ForcingMoves, GomokuGameState, MoveApplyTiming,
+    MoveGenTiming,
+};
 use crate::utils::duration_to_ns;
 fn record_duration_ns<F: FnOnce()>(field: &mut u64, f: F) {
     let start = Instant::now();
@@ -207,37 +210,56 @@ impl GomokuGameState {
         forcing_bits: &mut Vec<u64>,
         scored_moves: &mut Vec<(Coord, f32)>,
         out_moves: &mut Vec<Coord>,
-    ) {
+    ) -> MoveGenTiming {
+        let mut timing = MoveGenTiming::default();
         let opponent = 3 - player;
+        let start_candidate = Instant::now();
         self.collect_forcing_moves_bits(
             self.threat_index
                 .get_pattern_windows(player, self.win_len - 1, 0),
             forcing_bits,
         );
-        if !Bitboard::is_all_zeros(forcing_bits) {
+        let found_my_win = !Bitboard::is_all_zeros(forcing_bits);
+        timing.candidate_gen_ns = duration_to_ns(start_candidate.elapsed());
+        if found_my_win {
+            let start_collect = Instant::now();
             out_moves.clear();
             out_moves.extend(self.bitboard.iter_bits(forcing_bits));
-            return;
+            timing.candidate_gen_ns += duration_to_ns(start_collect.elapsed());
+            return timing;
         }
+        let start_threat = Instant::now();
         self.collect_forcing_moves_bits(
             self.threat_index
                 .get_pattern_windows(opponent, self.win_len - 1, 0),
             forcing_bits,
         );
-        if !Bitboard::is_all_zeros(forcing_bits) {
+        let found_opponent_threat = !Bitboard::is_all_zeros(forcing_bits);
+        timing.candidate_gen_ns += duration_to_ns(start_threat.elapsed());
+        if found_opponent_threat {
+            let start_collect = Instant::now();
             out_moves.clear();
             out_moves.extend(self.bitboard.iter_bits(forcing_bits));
-            self.score_and_sort_moves_in_place(player, out_moves, score_buffer, scored_moves);
-            return;
+            timing.candidate_gen_ns += duration_to_ns(start_collect.elapsed());
+            record_duration_ns(&mut timing.scoring_ns, || {
+                self.score_and_sort_moves_in_place(player, out_moves, score_buffer, scored_moves);
+            });
+            return timing;
         }
+        let start_empty = Instant::now();
         let (empty_bits, ..) = workspace.pads_mut();
         self.bitboard.empty_into(empty_bits);
         if Bitboard::is_all_zeros(empty_bits) {
             out_moves.clear();
-            return;
+            timing.candidate_gen_ns += duration_to_ns(start_empty.elapsed());
+            return timing;
         }
         out_moves.clear();
         out_moves.extend(self.bitboard.iter_bits(empty_bits));
-        self.score_and_sort_moves_in_place(player, out_moves, score_buffer, scored_moves);
+        timing.candidate_gen_ns += duration_to_ns(start_empty.elapsed());
+        record_duration_ns(&mut timing.scoring_ns, || {
+            self.score_and_sort_moves_in_place(player, out_moves, score_buffer, scored_moves);
+        });
+        timing
     }
 }

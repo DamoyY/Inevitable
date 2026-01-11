@@ -29,6 +29,11 @@ macro_rules! define_move_apply_timing {
     };
 }
 crate::for_each_move_apply_timing!(define_move_apply_timing);
+#[derive(Clone, Copy, Default)]
+pub struct MoveGenTiming {
+    pub candidate_gen_ns: u64,
+    pub scoring_ns: u64,
+}
 #[derive(Clone)]
 pub struct GomokuGameState {
     pub board: Vec<u8>,

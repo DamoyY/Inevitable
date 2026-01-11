@@ -1,5 +1,5 @@
 use super::node::NodeRef;
-use crate::game_state::{BitboardWorkspace, GomokuGameState, MoveApplyTiming};
+use crate::game_state::{BitboardWorkspace, GomokuGameState, MoveApplyTiming, MoveGenTiming};
 pub struct PathEntry {
     pub node: NodeRef,
     pub mov: (usize, usize),
@@ -82,7 +82,7 @@ impl ThreadLocalContext {
         self.game_state.get_hash()
     }
 
-    pub fn refresh_legal_moves(&mut self, player: u8) {
+    pub fn refresh_legal_moves(&mut self, player: u8) -> MoveGenTiming {
         self.game_state.get_legal_moves_into(
             player,
             &mut self.bitboard_workspace,
@@ -90,6 +90,6 @@ impl ThreadLocalContext {
             &mut self.forcing_bits,
             &mut self.scored_moves,
             &mut self.legal_moves,
-        );
+        )
     }
 }

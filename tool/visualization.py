@@ -25,7 +25,7 @@ FALLBACK_FONTS = ["DejaVu Sans"]
 FIG_SIZE = (16, 16)
 BAR_WIDTH = 0.95
 TIME_UNIT_SCALE = 1e-6
-Y_ABS_LIMIT = (-1e7 * TIME_UNIT_SCALE, 1e7 * TIME_UNIT_SCALE)
+Y_ABS_LIMIT = (-2e7 * TIME_UNIT_SCALE, 2e7 * TIME_UNIT_SCALE)
 
 
 def _srgb_to_linear(c):
@@ -195,14 +195,20 @@ def _set_plot_style():
 
 def _plot_absolute(ax, x, series_values, time_cols, colors):
     total = series_values.sum(axis=1)
+    valid_rows = total != 0
+    if np.any(valid_rows):
+        avg_time = np.mean(series_values[valid_rows], axis=0)
+        order = _centered_order_by_average(avg_time)
+    else:
+        order = np.arange(series_values.shape[1])
     bottom = -total / 2
-    for idx, col in enumerate(time_cols):
+    for idx in order:
         values = series_values[:, idx]
         ax.bar(
             x,
             values,
             bottom=bottom,
-            label=col,
+            label=time_cols[idx],
             color=colors[idx],
             alpha=1.0,
             width=BAR_WIDTH,
@@ -249,6 +255,20 @@ def _plot_percent(ax, x, series_values, total, colors):
     ax.set_xlabel("回合-深度", fontsize=26)
     ax.set_ylim(0, 100)
     ax.grid(True, alpha=1, color="gray")
+
+
+def _centered_order_by_average(avg_values):
+    count = len(avg_values)
+    if count == 0:
+        return np.array([], dtype=int)
+    sorted_idx = np.argsort(-avg_values)
+    center = (count - 1) / 2
+    positions = list(range(count))
+    positions.sort(key=lambda i: abs(i - center))
+    order = np.empty(count, dtype=int)
+    for rank, pos in enumerate(positions):
+        order[pos] = sorted_idx[rank]
+    return order
 
 
 def _apply_xticks(ax, x, x_labels, use_round_depth):

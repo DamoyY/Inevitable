@@ -38,13 +38,15 @@ impl SharedTree {
         let player = node.player;
         let depth = node.depth;
         let is_or_node = node.is_or_node();
-        let movegen_start = Instant::now();
-        ctx.refresh_legal_moves(player);
+        let move_gen_timing = ctx.refresh_legal_moves(player);
+        self.stats
+            .move_gen_candidates_time_ns
+            .fetch_add(move_gen_timing.candidate_gen_ns, Ordering::Relaxed);
+        self.stats
+            .move_gen_scoring_time_ns
+            .fetch_add(move_gen_timing.scoring_ns, Ordering::Relaxed);
         let legal_moves = std::mem::take(&mut ctx.legal_moves);
         let legal_moves_len = legal_moves.len();
-        self.stats
-            .movegen_time_ns
-            .fetch_add(duration_to_ns(movegen_start.elapsed()), Ordering::Relaxed);
         let mut children = Vec::with_capacity(legal_moves_len);
         let mut local_stats = TreeStatsAccumulator::default();
         for &mov in &legal_moves {
