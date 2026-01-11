@@ -57,12 +57,17 @@ impl SharedTree {
             local_stats.hash_time_ns = local_stats
                 .hash_time_ns
                 .wrapping_add(duration_to_ns(pos_hash_start.elapsed()));
-            local_stats.node_table_lookups = local_stats.node_table_lookups.wrapping_add(1);
             let node_key = (child_pos_hash, depth + 1);
             let is_depth_limited = self.depth_limit.is_some_and(|limit| depth + 1 >= limit);
-            let child = self.get_or_create_child(ctx, node_key, player, depth, is_depth_limited);
+            let child = ctx.get_cached_node(&node_key).unwrap_or_else(|| {
+                local_stats.node_table_lookups = local_stats.node_table_lookups.wrapping_add(1);
+                let child =
+                    self.get_or_create_child(ctx, node_key, player, depth, is_depth_limited);
+                ctx.cache_node(node_key, Arc::clone(&child));
+                child
+            });
             let undo_start = Instant::now();
-            ctx.undo_move(mov);
+            ctx.undo_move(mov, player);
             local_stats.move_undo_time_ns = local_stats
                 .move_undo_time_ns
                 .wrapping_add(duration_to_ns(undo_start.elapsed()));

@@ -89,7 +89,7 @@ impl Worker {
 
     fn backpropagate(&mut self) {
         while let Some(entry) = self.ctx.pop_path() {
-            self.ctx.undo_move(entry.mov);
+            self.ctx.undo_move(entry.mov, entry.player);
             entry
                 .node
                 .remove_virtual_pressure(entry.virtual_pn_added, entry.virtual_dn_added);

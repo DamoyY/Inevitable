@@ -34,6 +34,13 @@ pub struct MoveGenTiming {
     pub candidate_gen_ns: u64,
     pub scoring_ns: u64,
 }
+pub struct MoveGenBuffers<'a> {
+    pub score_buffer: &'a mut Vec<f32>,
+    pub forcing_bits: &'a mut Vec<u64>,
+    pub scored_moves: &'a mut Vec<(Coord, f32)>,
+    pub out_moves: &'a mut Vec<Coord>,
+    pub proximity_scores: Option<&'a [f32]>,
+}
 #[derive(Clone)]
 pub struct GomokuGameState {
     pub board: Vec<u8>,

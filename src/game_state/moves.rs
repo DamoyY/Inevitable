@@ -2,7 +2,7 @@ use std::{collections::HashSet, time::Instant};
 
 use super::{
     Bitboard, BitboardWorkspace, Coord, ForcingMoves, GomokuGameState, MoveApplyTiming,
-    MoveGenTiming,
+    MoveGenBuffers, MoveGenTiming,
 };
 use crate::utils::duration_to_ns;
 fn record_duration_ns<F: FnOnce()>(field: &mut u64, f: F) {
@@ -70,6 +70,26 @@ impl GomokuGameState {
         scored_moves: &mut Vec<(Coord, f32)>,
     ) {
         self.score_moves_into(player, moves, score_buffer, scored_moves);
+        scored_moves.sort_unstable_by(|a, b| b.1.total_cmp(&a.1));
+        moves.clear();
+        moves.extend(scored_moves.iter().map(|(coord, _)| *coord));
+    }
+
+    fn score_and_sort_moves_in_place_with_proximity(
+        &self,
+        player: u8,
+        moves: &mut Vec<Coord>,
+        proximity_scores: &[f32],
+        score_buffer: &mut Vec<f32>,
+        scored_moves: &mut Vec<(Coord, f32)>,
+    ) {
+        self.score_moves_into_with_proximity(
+            player,
+            moves,
+            proximity_scores,
+            score_buffer,
+            scored_moves,
+        );
         scored_moves.sort_unstable_by(|a, b| b.1.total_cmp(&a.1));
         moves.clear();
         moves.extend(scored_moves.iter().map(|(coord, _)| *coord));
@@ -206,11 +226,13 @@ impl GomokuGameState {
         &self,
         player: u8,
         workspace: &mut BitboardWorkspace,
-        score_buffer: &mut Vec<f32>,
-        forcing_bits: &mut Vec<u64>,
-        scored_moves: &mut Vec<(Coord, f32)>,
-        out_moves: &mut Vec<Coord>,
+        buffers: &mut MoveGenBuffers<'_>,
     ) -> MoveGenTiming {
+        let score_buffer = &mut *buffers.score_buffer;
+        let forcing_bits = &mut *buffers.forcing_bits;
+        let scored_moves = &mut *buffers.scored_moves;
+        let out_moves = &mut *buffers.out_moves;
+        let proximity_scores = buffers.proximity_scores;
         let mut timing = MoveGenTiming::default();
         let opponent = 3 - player;
         let start_candidate = Instant::now();
@@ -242,7 +264,17 @@ impl GomokuGameState {
             out_moves.extend(self.bitboard.iter_bits(forcing_bits));
             timing.candidate_gen_ns += duration_to_ns(start_collect.elapsed());
             record_duration_ns(&mut timing.scoring_ns, || {
-                self.score_and_sort_moves_in_place(player, out_moves, score_buffer, scored_moves);
+                if let Some(proximity_scores) = proximity_scores {
+                    self.score_and_sort_moves_in_place_with_proximity(
+                        player,
+                        out_moves,
+                        proximity_scores,
+                        score_buffer,
+                        scored_moves,
+                    );
+                } else {
+                    self.score_and_sort_moves_in_place(player, out_moves, score_buffer, scored_moves);
+                }
             });
             return timing;
         }
@@ -258,7 +290,17 @@ impl GomokuGameState {
         out_moves.extend(self.bitboard.iter_bits(empty_bits));
         timing.candidate_gen_ns += duration_to_ns(start_empty.elapsed());
         record_duration_ns(&mut timing.scoring_ns, || {
-            self.score_and_sort_moves_in_place(player, out_moves, score_buffer, scored_moves);
+            if let Some(proximity_scores) = proximity_scores {
+                self.score_and_sort_moves_in_place_with_proximity(
+                    player,
+                    out_moves,
+                    proximity_scores,
+                    score_buffer,
+                    scored_moves,
+                );
+            } else {
+                self.score_and_sort_moves_in_place(player, out_moves, score_buffer, scored_moves);
+            }
         });
         timing
     }

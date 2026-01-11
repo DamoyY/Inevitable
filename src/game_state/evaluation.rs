@@ -42,6 +42,24 @@ impl GomokuGameState {
         }
     }
 
+    pub(crate) fn rebuild_proximity_scores(&self, player: u8, target: &mut [f32]) {
+        let needed_len = self.board_size.saturating_mul(self.board_size);
+        if target.len() != needed_len {
+            return;
+        }
+        target.fill(0.0);
+        self.add_proximity_scores(player, target);
+    }
+
+    pub(crate) fn apply_proximity_delta(&self, mov: Coord, delta: f32, target: &mut [f32]) {
+        let needed_len = self.board_size.saturating_mul(self.board_size);
+        if target.len() != needed_len {
+            return;
+        }
+        let scale = self.proximity_scale * delta;
+        self.apply_proximity_kernel_scaled(mov, scale, target);
+    }
+
     fn apply_proximity_kernel_scaled(&self, mov: Coord, scale: f32, target: &mut [f32]) {
         let (r, c) = mov;
         let kernel_h = self.proximity_kernel.len();
@@ -111,6 +129,23 @@ impl GomokuGameState {
         score_buffer: &mut Vec<f32>,
         scored_moves: &mut Vec<(Coord, f32)>,
     ) {
+        self.score_moves_into_with_proximity(
+            player,
+            moves_to_score,
+            &[],
+            score_buffer,
+            scored_moves,
+        );
+    }
+
+    pub(crate) fn score_moves_into_with_proximity(
+        &self,
+        player: u8,
+        moves_to_score: &[Coord],
+        proximity_scores: &[f32],
+        score_buffer: &mut Vec<f32>,
+        scored_moves: &mut Vec<(Coord, f32)>,
+    ) {
         const SCORE_WIN: f32 = 10_000_000.0;
         const SCORE_LIVE_FOUR: f32 = 500_000.0;
         const SCORE_BLOCKED_FOUR: f32 = 15_000.0;
@@ -130,7 +165,13 @@ impl GomokuGameState {
             score_buffer.resize(needed_len, 0.0);
         }
         score_buffer.copy_from_slice(&self.positional_bonus);
-        self.add_proximity_scores(player, score_buffer);
+        if proximity_scores.len() == needed_len {
+            for (score, proximity) in score_buffer.iter_mut().zip(proximity_scores.iter()) {
+                *score += *proximity;
+            }
+        } else {
+            self.add_proximity_scores(player, score_buffer);
+        }
         let patterns_to_score = [
             (self.win_len - 1, 0, SCORE_WIN),
             (self.win_len - 2, 0, SCORE_LIVE_FOUR),
