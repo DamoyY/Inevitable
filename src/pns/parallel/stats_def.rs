@@ -118,7 +118,7 @@ define_metrics! {
         movegen_time_ns => "走子生成耗时",
         board_update_time_ns => "基础棋盘更新耗时",
         bitboard_update_time_ns => "位棋盘更新耗时",
-        threat_index_update_time_ns => "威胁索引增量更新耗时",
+        threat_index_update_time_ns => "威胁索引更新耗时",
         candidate_remove_time_ns => "候选着法移除耗时",
         candidate_neighbor_time_ns => "邻居空位计算耗时",
         candidate_insert_time_ns => "候选着法更新耗时",
@@ -148,7 +148,7 @@ define_metrics! {
         bitboard_update_us => ("位棋盘更新耗时", |snapshot: &TreeStatsSnapshot| {
             total_us(snapshot.bitboard_update_time_ns)
         }),
-        threat_index_update_us => ("威胁索引增量更新耗时", |snapshot: &TreeStatsSnapshot| {
+        threat_index_update_us => ("威胁索引更新耗时", |snapshot: &TreeStatsSnapshot| {
             total_us(snapshot.threat_index_update_time_ns)
         }),
         candidate_remove_us => ("候选着法移除耗时", |snapshot: &TreeStatsSnapshot| {

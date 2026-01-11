@@ -8,7 +8,7 @@ import numpy as np
 import os
 
 CSV_PATH = "log.csv"
-OUTPUT_DIR = "visualization"
+OUTPUT_DIR = "tool/visualization"
 CJK_FONT_CANDIDATES = [
     "Microsoft YaHei",
     "SimHei",
@@ -25,7 +25,7 @@ FALLBACK_FONTS = ["DejaVu Sans"]
 FIG_SIZE = (16, 16)
 BAR_WIDTH = 0.95
 TIME_UNIT_SCALE = 1e-6
-Y_ABS_LIMIT = (-2e7 * TIME_UNIT_SCALE, 2e7 * TIME_UNIT_SCALE)
+Y_ABS_LIMIT = (-1e7 * TIME_UNIT_SCALE, 1e7 * TIME_UNIT_SCALE)
 
 
 def _srgb_to_linear(c):
@@ -262,7 +262,7 @@ def _apply_xticks(ax, x, x_labels, use_round_depth):
 
 
 def _save_figure(fig):
-    timestamp = datetime.now().strftime("%m%d%H%M")
+    timestamp = datetime.now().strftime("%m-%d_%H-%M")
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     svg_path = os.path.join(OUTPUT_DIR, f"{timestamp}.svg")
     fig.savefig(

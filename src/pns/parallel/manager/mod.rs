@@ -230,10 +230,7 @@ impl ParallelSolver {
         if root.get_pn() != 0 {
             return None;
         }
-        let children = {
-            let children_guard = root.children.read();
-            children_guard.as_ref().cloned()?
-        };
+        let children = root.children.get()?.clone();
         if children.is_empty() {
             return None;
         }

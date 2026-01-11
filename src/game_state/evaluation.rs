@@ -1,16 +1,5 @@
 use super::{Coord, GomokuGameState};
 impl GomokuGameState {
-    pub(crate) fn make_proximity_maps(board_size: usize) -> [Vec<f32>; 2] {
-        [
-            Self::empty_proximity_map(board_size),
-            Self::empty_proximity_map(board_size),
-        ]
-    }
-
-    pub(crate) fn empty_proximity_map(board_size: usize) -> Vec<f32> {
-        vec![0.0f32; board_size.saturating_mul(board_size)]
-    }
-
     pub(crate) fn init_proximity_kernel(_board_size: usize) -> (Vec<Vec<f32>>, f32) {
         let k_size = 7;
         let k_center = k_size / 2;
@@ -41,23 +30,19 @@ impl GomokuGameState {
         positional_bonus
     }
 
-    pub(crate) fn rebuild_proximity_maps(&mut self) {
-        self.proximity_maps = Self::make_proximity_maps(self.board_size);
-        for r in 0..self.board_size {
-            for c in 0..self.board_size {
-                let player = self.board[self.board_index(r, c)];
-                if player == 1 || player == 2 {
-                    self.apply_proximity_delta((r, c), player, 1.0);
+    fn add_proximity_scores(&self, player: u8, score_buffer: &mut [f32]) {
+        let board_size = self.board_size;
+        let scale = self.proximity_scale;
+        for r in 0..board_size {
+            for c in 0..board_size {
+                if self.board[self.board_index(r, c)] == player {
+                    self.apply_proximity_kernel_scaled((r, c), scale, score_buffer);
                 }
             }
         }
     }
 
-    pub(crate) fn apply_proximity_delta(&mut self, mov: Coord, player: u8, delta: f32) {
-        let player_idx = usize::from(player).saturating_sub(1);
-        if player_idx >= self.proximity_maps.len() {
-            return;
-        }
+    fn apply_proximity_kernel_scaled(&self, mov: Coord, scale: f32, target: &mut [f32]) {
         let (r, c) = mov;
         let kernel_h = self.proximity_kernel.len();
         let pad_h = kernel_h / 2;
@@ -78,7 +63,6 @@ impl GomokuGameState {
         let Some(base_c) = c.checked_add(pad_w) else {
             return;
         };
-        let target_map = &mut self.proximity_maps[player_idx];
         let board_size = self.board_size;
         for (ki, kernel_row) in self.proximity_kernel.iter().enumerate() {
             let Some(ki) = isize::try_from(ki).ok() else {
@@ -104,7 +88,7 @@ impl GomokuGameState {
                     continue;
                 };
                 let idx = row_start.saturating_add(out_c);
-                target_map[idx] += kernel_val * delta;
+                target[idx] += kernel_val * scale;
             }
         }
     }
@@ -146,13 +130,7 @@ impl GomokuGameState {
             score_buffer.resize(needed_len, 0.0);
         }
         score_buffer.copy_from_slice(&self.positional_bonus);
-        let player_idx = usize::from(player).saturating_sub(1);
-        if player_idx < self.proximity_maps.len() {
-            let proximity_map = &self.proximity_maps[player_idx];
-            for (total_cell, &proximity_val) in score_buffer.iter_mut().zip(proximity_map.iter()) {
-                *total_cell += proximity_val * self.proximity_scale;
-            }
-        }
+        self.add_proximity_scores(player, score_buffer);
         let patterns_to_score = [
             (self.win_len - 1, 0, SCORE_WIN),
             (self.win_len - 2, 0, SCORE_LIVE_FOUR),
@@ -168,9 +146,11 @@ impl GomokuGameState {
             let windows = self.threat_index.get_pattern_windows(player, p_req, o_req);
             for window_idx in windows {
                 let window = &self.threat_index.all_windows[window_idx];
-                for &(r, c) in &window.empty_cells {
-                    let idx = r.saturating_mul(board_size).saturating_add(c);
-                    score_buffer[idx] += score;
+                for &(r, c) in &window.coords {
+                    if self.board[self.board_index(r, c)] == 0 {
+                        let idx = r.saturating_mul(board_size).saturating_add(c);
+                        score_buffer[idx] += score;
+                    }
                 }
             }
         }

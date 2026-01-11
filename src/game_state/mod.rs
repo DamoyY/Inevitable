@@ -43,5 +43,4 @@ pub struct GomokuGameState {
     pub(crate) proximity_kernel: Vec<Vec<f32>>,
     pub(crate) proximity_scale: f32,
     pub(crate) positional_bonus: Vec<f32>,
-    pub(crate) proximity_maps: [Vec<f32>; 2],
 }

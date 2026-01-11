@@ -30,13 +30,11 @@ impl GomokuGameState {
             proximity_kernel,
             proximity_scale,
             positional_bonus,
-            proximity_maps: [Vec::new(), Vec::new()],
         };
         state.rebuild_hashes(current_player);
         state.threat_index.initialize_from_board(&state.board);
         let mut workspace = BitboardWorkspace::new(state.bitboard.num_words());
         state.rebuild_candidate_moves(&mut workspace);
-        state.rebuild_proximity_maps();
         state
     }
 

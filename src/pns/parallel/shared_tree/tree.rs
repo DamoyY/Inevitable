@@ -30,8 +30,7 @@ impl SharedTree {
     ) where
         F: FnMut(NodeRef),
     {
-        let children_guard = node.children.read();
-        if let Some(children) = children_guard.as_ref() {
+        if let Some(children) = node.children.get() {
             for child in children {
                 let ptr = Arc::as_ptr(&child.node);
                 if visited.insert(ptr) {
@@ -124,10 +123,6 @@ impl SharedTree {
                 node.set_pn(1);
                 node.set_dn(1);
                 node.set_win_len(u64::MAX);
-                let mut children_guard = node.children.write();
-                if matches!(children_guard.as_ref(), Some(children) if children.is_empty()) {
-                    *children_guard = None;
-                }
             }
             Self::push_unvisited_children(&node, &mut visited, |child| {
                 queue.push_back(child);
@@ -170,17 +165,14 @@ impl SharedTree {
     }
 
     pub fn select_best_child(&self, node: &NodeRef) -> Option<ChildRef> {
-        let children = {
-            let children_guard = node.children.read();
-            children_guard.as_ref().cloned()?
-        };
+        let children = node.children.get()?;
         let is_or_node = node.is_or_node();
-        children.into_iter().min_by_key(|c| {
+        children.iter().min_by_key(|c| {
             if is_or_node {
                 (c.node.get_effective_pn(), c.node.get_win_len())
             } else {
                 (c.node.get_effective_dn(), c.node.get_win_len())
             }
-        })
+        }).cloned()
     }
 }

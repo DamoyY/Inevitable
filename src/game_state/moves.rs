@@ -20,7 +20,11 @@ impl GomokuGameState {
         let mut cells = HashSet::new();
         for window_idx in window_indices {
             let window = &self.threat_index.all_windows[window_idx];
-            cells.extend(window.empty_cells.iter());
+            for &(r, c) in &window.coords {
+                if self.board[self.board_index(r, c)] == 0 {
+                    cells.insert((r, c));
+                }
+            }
         }
         cells
     }
@@ -36,8 +40,10 @@ impl GomokuGameState {
         bits.fill(0);
         for window_idx in window_indices {
             let window = &self.threat_index.all_windows[window_idx];
-            for &(r, c) in &window.empty_cells {
-                self.bitboard.set_in(bits, r, c);
+            for &(r, c) in &window.coords {
+                if self.board[self.board_index(r, c)] == 0 {
+                    self.bitboard.set_in(bits, r, c);
+                }
             }
         }
     }
@@ -80,7 +86,6 @@ impl GomokuGameState {
         record_duration_ns(&mut timing.bitboard_update_ns, || {
             self.bitboard.set(r, c, player);
         });
-        self.apply_proximity_delta(mov, player, 1.0);
         record_duration_ns(&mut timing.threat_index_update_ns, || {
             self.threat_index.update_on_move(mov, player);
         });
@@ -137,7 +142,6 @@ impl GomokuGameState {
         let (r, c) = mov;
         let board_idx = self.board_index(r, c);
         let player = self.board[board_idx];
-        self.apply_proximity_delta(mov, player, -1.0);
         self.threat_index.update_on_undo(mov, player);
         self.board[board_idx] = 0;
         self.bitboard.clear(r, c);

@@ -35,9 +35,8 @@ pub fn print_board(board: &[u8], board_size: usize) {
         println!();
     }
 }
-pub fn play_game(exit_flag: &Arc<AtomicBool>) {
-    let config = Config::load();
-    print_intro(&config);
+pub fn play_game(exit_flag: &Arc<AtomicBool>, config: &Config) {
+    print_intro(config);
     let board_size = config.board_size;
     let mut board = vec![0u8; board_size.saturating_mul(board_size)];
     let mut current_player = 1u8;
@@ -55,7 +54,7 @@ pub fn play_game(exit_flag: &Arc<AtomicBool>) {
         if current_player == 1 {
             if ai_turn(
                 &mut board,
-                &config,
+                config,
                 !has_stones,
                 &mut tt,
                 &mut node_table,

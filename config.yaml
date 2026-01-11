@@ -1,5 +1,7 @@
-board_size: 6
+board_size: 9
 win_len: 5
 initial_depth_limit: 0
 verbose: true
 num_threads: 0
+min_available_memory_mb: 2048
+memory_check_interval_ms: 500

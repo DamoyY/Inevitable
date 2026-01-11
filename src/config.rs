@@ -7,6 +7,18 @@ pub struct Config {
     pub win_len: usize,
     pub verbose: bool,
     pub num_threads: usize,
+    #[serde(default = "default_min_available_memory_mb")]
+    pub min_available_memory_mb: u64,
+    #[serde(default = "default_memory_check_interval_ms")]
+    pub memory_check_interval_ms: u64,
+}
+
+const fn default_min_available_memory_mb() -> u64 {
+    1024
+}
+
+const fn default_memory_check_interval_ms() -> u64 {
+    500
 }
 impl Config {
     pub fn load() -> Self {

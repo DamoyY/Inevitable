@@ -14,26 +14,22 @@ use crate::{
 };
 impl SharedTree {
     pub fn expand_node(&self, node: &NodeRef, ctx: &mut ThreadLocalContext) -> bool {
-        let expand_start = Instant::now();
-        let children_lock_start = Instant::now();
-        let mut write_guard = node.children.write();
-        self.stats.children_lock_time_ns.fetch_add(
-            duration_to_ns(children_lock_start.elapsed()),
-            Ordering::Relaxed,
-        );
-        if write_guard.is_some() {
+        if node.children.get().is_some() || node.is_depth_cutoff() {
             return false;
         }
-        self.increment_expansions();
+        let expand_start = Instant::now();
         let _alloc_guard = AllocTrackingGuard::new();
         if let Some(limit) = self.depth_limit
             && node.depth >= limit
         {
-            *write_guard = Some(Vec::new());
+            if !node.try_mark_depth_cutoff() {
+                return false;
+            }
             self.stats.depth_cutoffs.fetch_add(1, Ordering::Relaxed);
-            node.set_depth_cutoff(true);
             node.set_is_depth_limited(true);
-            drop(write_guard);
+            node.set_pn(u64::MAX);
+            node.set_dn(u64::MAX);
+            node.set_win_len(u64::MAX);
             self.stats
                 .expand_time_ns
                 .fetch_add(duration_to_ns(expand_start.elapsed()), Ordering::Relaxed);
@@ -80,15 +76,19 @@ impl SharedTree {
             }
         }
         ctx.legal_moves = legal_moves;
+        let early_cutoff = children.len() < legal_moves_len;
+        let children_len = children.len() as u64;
+        if node.children.set(children).is_err() {
+            return false;
+        }
         self.stats.merge(&local_stats);
-        if children.len() < legal_moves_len {
+        self.increment_expansions();
+        if early_cutoff {
             self.stats.early_cutoffs.fetch_add(1, Ordering::Relaxed);
         }
         self.stats
             .children_generated
-            .fetch_add(children.len() as u64, Ordering::Relaxed);
-        *write_guard = Some(children);
-        drop(write_guard);
+            .fetch_add(children_len, Ordering::Relaxed);
         self.stats
             .expand_time_ns
             .fetch_add(duration_to_ns(expand_start.elapsed()), Ordering::Relaxed);

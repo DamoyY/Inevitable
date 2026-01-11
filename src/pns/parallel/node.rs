@@ -1,9 +1,7 @@
 use std::sync::{
-    Arc,
+    Arc, OnceLock,
     atomic::{AtomicBool, AtomicU64, Ordering},
 };
-
-use parking_lot::RwLock;
 pub type NodeRef = Arc<ParallelNode>;
 #[derive(Clone)]
 pub struct ChildRef {
@@ -19,7 +17,7 @@ pub struct ParallelNode {
     pub virtual_pn: AtomicU64,
     pub virtual_dn: AtomicU64,
     pub win_len: AtomicU64,
-    pub children: RwLock<Option<Vec<ChildRef>>>,
+    pub children: OnceLock<Vec<ChildRef>>,
     pub is_depth_limited: AtomicBool,
     pub depth_cutoff: AtomicBool,
 }
@@ -35,7 +33,7 @@ impl ParallelNode {
             virtual_pn: AtomicU64::new(0),
             virtual_dn: AtomicU64::new(0),
             win_len: AtomicU64::new(u64::MAX),
-            children: RwLock::new(None),
+            children: OnceLock::new(),
             is_depth_limited: AtomicBool::new(is_depth_limited),
             depth_cutoff: AtomicBool::new(false),
         }
@@ -48,7 +46,7 @@ impl ParallelNode {
 
     #[inline]
     pub fn is_expanded(&self) -> bool {
-        self.children.read().is_some()
+        self.children.get().is_some() || self.is_depth_cutoff()
     }
 
     #[inline]
@@ -111,6 +109,13 @@ impl ParallelNode {
     #[inline]
     pub fn set_depth_cutoff(&self, value: bool) {
         self.depth_cutoff.store(value, Ordering::Release);
+    }
+
+    #[inline]
+    pub fn try_mark_depth_cutoff(&self) -> bool {
+        self.depth_cutoff
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .is_ok()
     }
 
     #[inline]
