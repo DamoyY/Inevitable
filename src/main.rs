@@ -35,6 +35,8 @@ fn spawn_memory_watchdog(exit_flag: Arc<AtomicBool>, config: &Config) {
 
 fn main() {
     let config = Config::load();
+    let benchmark_mode = std::env::args()
+        .any(|arg| arg == "--benchmark" || arg == "--bench");
     let exit_flag = Arc::new(AtomicBool::new(false));
     let flag = exit_flag.clone();
     ctrlc::set_handler(move || {
@@ -43,5 +45,9 @@ fn main() {
     })
     .expect("无法设置 Ctrl+C 处理程序");
     spawn_memory_watchdog(exit_flag.clone(), &config);
-    ui::play_game(&exit_flag, &config);
+    if benchmark_mode {
+        ui::run_benchmark(&exit_flag, &config);
+    } else {
+        ui::play_game(&exit_flag, &config);
+    }
 }

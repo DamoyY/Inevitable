@@ -1,9 +1,14 @@
-use std::sync::{
-    Arc,
-    atomic::{AtomicBool, Ordering},
+use std::{
+    collections::BTreeMap,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+    time::Instant,
 };
 
 use super::{
+    TreeStatsSnapshot,
     context::ThreadLocalContext,
     shared_tree::{NodeTable, SharedTree, TranspositionTable},
 };
@@ -36,6 +41,64 @@ impl SearchParams {
             win_len,
             num_threads,
         }
+    }
+}
+pub struct BenchmarkResult {
+    pub elapsed_secs: f64,
+    pub stats: TreeStatsSnapshot,
+    pub tt_size: usize,
+    pub node_table_size: usize,
+}
+#[derive(Default)]
+struct DepthAccumulator {
+    total_stats: TreeStatsSnapshot,
+    total_elapsed_secs: f64,
+    total_tt_size: u64,
+    total_node_table_size: u64,
+    count: u64,
+}
+impl DepthAccumulator {
+    fn add_sample(
+        &mut self,
+        stats: TreeStatsSnapshot,
+        elapsed_secs: f64,
+        tt_size: u64,
+        node_table_size: u64,
+    ) {
+        self.total_stats.add_assign(&stats);
+        self.total_elapsed_secs += elapsed_secs;
+        self.total_tt_size = self.total_tt_size.saturating_add(tt_size);
+        self.total_node_table_size = self.total_node_table_size.saturating_add(node_table_size);
+        self.count = self.count.saturating_add(1);
+    }
+
+    fn average(&self) -> (TreeStatsSnapshot, f64, usize, usize) {
+        let count = self.count.max(1);
+        let divisor = f64::from(u32::try_from(count).unwrap_or(u32::MAX));
+        let stats = self.total_stats.div_round(count);
+        let elapsed_secs = self.total_elapsed_secs / divisor;
+        let tt_size_u64 = (self.total_tt_size.saturating_add(count / 2)) / count;
+        let node_table_size_u64 = (self.total_node_table_size.saturating_add(count / 2)) / count;
+        let tt_size = usize::try_from(tt_size_u64).unwrap_or(usize::MAX);
+        let node_table_size = usize::try_from(node_table_size_u64).unwrap_or(usize::MAX);
+        (stats, elapsed_secs, tt_size, node_table_size)
+    }
+}
+
+fn write_benchmark_logs(per_depth: BTreeMap<usize, DepthAccumulator>) {
+    for (depth, acc) in per_depth {
+        if acc.count == 0 {
+            continue;
+        }
+        let (stats, elapsed_secs, tt_size, node_table_size) = acc.average();
+        logging::write_csv_log_snapshot(
+            1,
+            elapsed_secs,
+            stats,
+            tt_size,
+            node_table_size,
+            Some(depth),
+        );
     }
 }
 impl ParallelSolver {
@@ -123,6 +186,89 @@ impl ParallelSolver {
         } else {
             eprintln!("无法取得 SharedTree 的可变引用，跳过深度调整");
         }
+    }
+
+    pub fn benchmark_next_move(
+        initial_board: &[u8],
+        params: SearchParams,
+        runs: usize,
+        stop_flag: &Arc<AtomicBool>,
+    ) -> Option<BenchmarkResult> {
+        if runs == 0 {
+            return None;
+        }
+        let base_board = initial_board.to_vec();
+        let mut per_depth: BTreeMap<usize, DepthAccumulator> = BTreeMap::new();
+        let mut total_stats = TreeStatsSnapshot::default();
+        let mut total_elapsed_secs = 0.0;
+        let mut total_tt_size: u64 = 0;
+        let mut total_node_table_size: u64 = 0;
+        for _ in 0..runs {
+            if stop_flag.load(Ordering::Acquire) {
+                return None;
+            }
+            let start = Instant::now();
+            let mut depth = 1usize;
+            let mut solver = Self::with_tt_and_stop(
+                base_board.clone(),
+                params,
+                Some(depth),
+                stop_flag,
+                None,
+                None,
+            );
+            let mut prev_stats = TreeStatsSnapshot::default();
+            let mut prev_elapsed = 0.0;
+            loop {
+                if stop_flag.load(Ordering::Acquire) {
+                    return None;
+                }
+                let found = solver.solve(false);
+                if stop_flag.load(Ordering::Acquire) || solver.tree.stop_requested() {
+                    return None;
+                }
+                let elapsed = start.elapsed().as_secs_f64();
+                let current_stats = solver.tree.stats_snapshot();
+                let delta_stats = current_stats.delta_since(&prev_stats);
+                let delta_elapsed = (elapsed - prev_elapsed).max(0.0);
+                let tt_size = solver.tree.get_tt_size() as u64;
+                let node_table_size = solver.tree.get_node_table_size() as u64;
+                let entry = per_depth.entry(depth).or_default();
+                entry.add_sample(delta_stats, delta_elapsed, tt_size, node_table_size);
+                prev_stats = current_stats;
+                prev_elapsed = elapsed;
+                if found {
+                    solver.get_best_move()?;
+                    total_elapsed_secs += elapsed;
+                    total_stats.add_assign(&current_stats);
+                    total_tt_size = total_tt_size.saturating_add(tt_size);
+                    total_node_table_size =
+                        total_node_table_size.saturating_add(node_table_size);
+                    break;
+                }
+                depth += 1;
+                if stop_flag.load(Ordering::Acquire) {
+                    return None;
+                }
+                solver.increase_depth_limit(depth);
+            }
+        }
+        let runs_count = runs as u64;
+        let runs_divisor = f64::from(u32::try_from(runs).unwrap_or(u32::MAX));
+        write_benchmark_logs(per_depth);
+        let stats = total_stats.div_round(runs_count);
+        let elapsed_secs = total_elapsed_secs / runs_divisor;
+        let tt_size_u64 = (total_tt_size.saturating_add(runs_count / 2)) / runs_count;
+        let node_table_size_u64 =
+            (total_node_table_size.saturating_add(runs_count / 2)) / runs_count;
+        let tt_size = usize::try_from(tt_size_u64).unwrap_or(usize::MAX);
+        let node_table_size = usize::try_from(node_table_size_u64).unwrap_or(usize::MAX);
+        Some(BenchmarkResult {
+            elapsed_secs,
+            stats,
+            tt_size,
+            node_table_size,
+        })
     }
 
     #[must_use]

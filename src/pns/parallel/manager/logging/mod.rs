@@ -151,3 +151,25 @@ pub(super) fn write_csv_log(tree: &SharedTree, turn: usize, elapsed_secs: f64) {
         let _ = writer.flush();
     }
 }
+
+pub(super) fn write_csv_log_snapshot(
+    turn: usize,
+    elapsed_secs: f64,
+    stats: TreeStatsSnapshot,
+    tt_size: usize,
+    node_table_size: usize,
+    depth_limit: Option<usize>,
+) {
+    let Ok(mut writer) = open_log_writer() else {
+        return;
+    };
+    let snapshot = LogSnapshot {
+        stats,
+        tt_size,
+        node_table_size,
+        depth_limit,
+    };
+    if write_log(&mut writer, turn, elapsed_secs, &snapshot, stats).is_ok() {
+        let _ = writer.flush();
+    }
+}

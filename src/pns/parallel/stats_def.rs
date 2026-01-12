@@ -60,6 +60,21 @@ macro_rules! define_metrics {
                     $($tname: self.$tname.saturating_sub(prev.$tname),)*
                 }
             }
+
+            pub const fn add_assign(&mut self, other: &Self) {
+                $(self.$cname = self.$cname.saturating_add(other.$cname);)*
+                $(self.$tname = self.$tname.saturating_add(other.$tname);)*
+            }
+
+            #[must_use]
+            pub fn div_round(self, divisor: u64) -> Self {
+                let divisor = divisor.max(1);
+                let half = divisor / 2;
+                Self {
+                    $($cname: self.$cname.saturating_add(half) / divisor,)*
+                    $($tname: self.$tname.saturating_add(half) / divisor,)*
+                }
+            }
         }
         #[derive(Default)]
         pub struct TreeStatsAccumulator {

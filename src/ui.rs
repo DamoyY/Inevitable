@@ -15,6 +15,9 @@ use crate::{
     pns::{NodeTable, ParallelSolver, SearchParams, TranspositionTable},
     utils::board_index,
 };
+const BENCHMARK_BOARD_7X7: [&str; 7] = [
+    ".......", ".......", "..O....", "...X...", ".......", ".......", ".......",
+];
 pub fn print_board(board: &[u8], board_size: usize) {
     print!("  ");
     for i in 0..board_size {
@@ -34,6 +37,70 @@ pub fn print_board(board: &[u8], board_size: usize) {
         }
         println!();
     }
+}
+pub fn run_benchmark(exit_flag: &Arc<AtomicBool>, config: &Config) {
+    const BENCHMARK_RUNS: usize = 3;
+    if config.board_size != 7 || config.win_len != 5 {
+        eprintln!(
+            "基准测试固定残局仅支持 7x7 棋盘与 5 连珠规则，当前配置为 {}x{}，胜利长度 {}。",
+            config.board_size, config.board_size, config.win_len
+        );
+        return;
+    }
+    let board = match benchmark_board(config.board_size) {
+        Ok(board) => board,
+        Err(err) => {
+            eprintln!("{err}");
+            return;
+        }
+    };
+    if check_win(&board, config.board_size, config.win_len, 1)
+        || check_win(&board, config.board_size, config.win_len, 2)
+    {
+        eprintln!("基准残局已出现胜负，无法用于基准测试。");
+        return;
+    }
+    println!("开始基准测试：固定残局，计算下一步棋，循环 {BENCHMARK_RUNS} 次。");
+    let params = SearchParams::new(config.board_size, config.win_len, config.num_threads);
+    let Some(result) =
+        ParallelSolver::benchmark_next_move(&board, params, BENCHMARK_RUNS, exit_flag)
+    else {
+        println!("基准测试已被中断。");
+        return;
+    };
+    println!(
+        "基准测试完成，平均耗时 {avg:.6}s，日志已写入 log.csv。",
+        avg = result.elapsed_secs
+    );
+}
+
+fn benchmark_board(board_size: usize) -> Result<Vec<u8>, String> {
+    if board_size != BENCHMARK_BOARD_7X7.len() {
+        return Err(format!(
+            "基准残局仅支持 {}x{} 棋盘。",
+            BENCHMARK_BOARD_7X7.len(),
+            BENCHMARK_BOARD_7X7.len()
+        ));
+    }
+    let mut board = Vec::with_capacity(board_size.saturating_mul(board_size));
+    for (row_idx, row) in BENCHMARK_BOARD_7X7.iter().enumerate() {
+        let bytes = row.as_bytes();
+        if bytes.len() != board_size {
+            return Err(format!("基准残局第 {row_idx} 行长度不匹配。"));
+        }
+        for &cell in bytes {
+            let value = match cell {
+                b'.' => 0,
+                b'X' => 1,
+                b'O' => 2,
+                _ => {
+                    return Err(format!("基准残局包含非法字符 '{}'。", cell as char));
+                }
+            };
+            board.push(value);
+        }
+    }
+    Ok(board)
 }
 pub fn play_game(exit_flag: &Arc<AtomicBool>, config: &Config) {
     print_intro(config);
@@ -81,10 +148,10 @@ fn print_intro(config: &Config) {
         win_len = config.win_len
     );
     println!(
-        "使用 {threads} 个线程进行并行搜索",
+        "使用 {threads} 个线程进行搜索",
         threads = config.num_threads
     );
-    println!("程序执黑 (X)先手，您执白 (O)后手。");
+    println!("程序执黑 [X] 先手，您执白 [O] 后手");
 }
 fn ai_turn(
     board: &mut [u8],
