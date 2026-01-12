@@ -14,6 +14,7 @@ use super::{
 };
 use crate::{
     alloc_stats,
+    config::EvaluationConfig,
     game_state::{GomokuGameState, ZobristHasher},
 };
 mod logging;
@@ -32,14 +33,21 @@ pub struct SearchParams {
     pub board_size: usize,
     pub win_len: usize,
     pub num_threads: usize,
+    pub evaluation: EvaluationConfig,
 }
 impl SearchParams {
     #[must_use]
-    pub const fn new(board_size: usize, win_len: usize, num_threads: usize) -> Self {
+    pub const fn new(
+        board_size: usize,
+        win_len: usize,
+        num_threads: usize,
+        evaluation: EvaluationConfig,
+    ) -> Self {
         Self {
             board_size,
             win_len,
             num_threads,
+            evaluation,
         }
     }
 }
@@ -101,6 +109,99 @@ fn write_benchmark_logs(per_depth: BTreeMap<usize, DepthAccumulator>) {
         );
     }
 }
+trait IterativeDeepeningHooks<R> {
+    fn on_stop(&mut self, solver: &mut ParallelSolver) -> R;
+    fn before_solve(&mut self, _depth: usize, _solver: &mut ParallelSolver) {}
+    fn solve(&mut self, solver: &mut ParallelSolver) -> bool;
+    fn after_solve(&mut self, _depth: usize, _solver: &mut ParallelSolver, _found: bool) {}
+    fn on_found(&mut self, _depth: usize, solver: &mut ParallelSolver) -> R;
+}
+struct BenchmarkDeepening<'a> {
+    start: Instant,
+    per_depth: &'a mut BTreeMap<usize, DepthAccumulator>,
+    prev_stats: TreeStatsSnapshot,
+    prev_elapsed: f64,
+    last_tt_size: u64,
+    last_node_table_size: u64,
+    total_stats: &'a mut TreeStatsSnapshot,
+    total_elapsed_secs: &'a mut f64,
+    total_tt_size: &'a mut u64,
+    total_node_table_size: &'a mut u64,
+}
+impl IterativeDeepeningHooks<Option<()>> for BenchmarkDeepening<'_> {
+    fn on_stop(&mut self, _solver: &mut ParallelSolver) -> Option<()> {
+        None
+    }
+
+    fn solve(&mut self, solver: &mut ParallelSolver) -> bool {
+        solver.solve(false)
+    }
+
+    fn after_solve(&mut self, depth: usize, solver: &mut ParallelSolver, _found: bool) {
+        let elapsed = self.start.elapsed().as_secs_f64();
+        let current_stats = solver.tree.stats_snapshot();
+        let delta_stats = current_stats.delta_since(&self.prev_stats);
+        let delta_elapsed = (elapsed - self.prev_elapsed).max(0.0);
+        let tt_size = solver.tree.get_tt_size() as u64;
+        let node_table_size = solver.tree.get_node_table_size() as u64;
+        let entry = self.per_depth.entry(depth).or_default();
+        entry.add_sample(delta_stats, delta_elapsed, tt_size, node_table_size);
+        self.prev_stats = current_stats;
+        self.prev_elapsed = elapsed;
+        self.last_tt_size = tt_size;
+        self.last_node_table_size = node_table_size;
+    }
+
+    fn on_found(&mut self, _depth: usize, solver: &mut ParallelSolver) -> Option<()> {
+        solver.get_best_move()?;
+        *self.total_elapsed_secs += self.prev_elapsed;
+        self.total_stats.add_assign(&self.prev_stats);
+        *self.total_tt_size = (*self.total_tt_size).saturating_add(self.last_tt_size);
+        *self.total_node_table_size =
+            (*self.total_node_table_size).saturating_add(self.last_node_table_size);
+        Some(())
+    }
+}
+struct BestMoveDeepening {
+    verbose: bool,
+}
+impl IterativeDeepeningHooks<(Option<(usize, usize)>, TranspositionTable, NodeTable)>
+    for BestMoveDeepening
+{
+    fn on_stop(
+        &mut self,
+        solver: &mut ParallelSolver,
+    ) -> (Option<(usize, usize)>, TranspositionTable, NodeTable) {
+        (None, solver.get_tt(), solver.get_node_table())
+    }
+
+    fn before_solve(&mut self, depth: usize, _solver: &mut ParallelSolver) {
+        if self.verbose {
+            println!("尝试搜索深度 D={depth}", depth = format_sci_usize(depth));
+        }
+    }
+
+    fn solve(&mut self, solver: &mut ParallelSolver) -> bool {
+        solver.solve(self.verbose)
+    }
+
+    fn on_found(
+        &mut self,
+        _depth: usize,
+        solver: &mut ParallelSolver,
+    ) -> (Option<(usize, usize)>, TranspositionTable, NodeTable) {
+        let best_move = solver.get_best_move();
+        if self.verbose {
+            let path_len = format_sci_u64(solver.root_win_len());
+            let best_move_display = best_move.map_or_else(
+                || "None".to_string(),
+                |(x, y)| format!("({}, {})", format_sci_usize(x), format_sci_usize(y)),
+            );
+            println!("在 {path_len} 步内找到路径，最佳首步: {best_move_display}");
+        }
+        (best_move, solver.get_tt(), solver.get_node_table())
+    }
+}
 impl ParallelSolver {
     #[must_use]
     pub fn new(
@@ -109,31 +210,23 @@ impl ParallelSolver {
         win_len: usize,
         depth_limit: Option<usize>,
         num_threads: usize,
+        evaluation: EvaluationConfig,
     ) -> Self {
-        Self::with_tt(
-            initial_board,
-            board_size,
-            win_len,
-            depth_limit,
-            num_threads,
-            None,
-            None,
-        )
+        let params = SearchParams::new(board_size, win_len, num_threads, evaluation);
+        Self::with_tt(initial_board, params, depth_limit, None, None)
     }
 
     #[must_use]
     pub fn with_tt(
         initial_board: Vec<u8>,
-        board_size: usize,
-        win_len: usize,
+        params: SearchParams,
         depth_limit: Option<usize>,
-        num_threads: usize,
         existing_tt: Option<TranspositionTable>,
         existing_node_table: Option<NodeTable>,
     ) -> Self {
         Self::with_tt_and_stop(
             initial_board,
-            SearchParams::new(board_size, win_len, num_threads),
+            params,
             depth_limit,
             &Arc::new(AtomicBool::new(false)),
             existing_tt,
@@ -153,10 +246,16 @@ impl ParallelSolver {
         alloc_stats::reset_alloc_timing_ns();
         let _alloc_guard = alloc_stats::AllocTrackingGuard::new();
         let hasher = Arc::new(ZobristHasher::new(params.board_size));
-        let game_state =
-            GomokuGameState::new(initial_board, params.board_size, hasher, 1, params.win_len);
-        let root_hash = game_state.get_canonical_hash();
-        let root_pos_hash = game_state.get_hash();
+        let game_state = GomokuGameState::new(
+            initial_board,
+            params.board_size,
+            hasher,
+            1,
+            params.win_len,
+            params.evaluation,
+        );
+        let root_hash = game_state.position.get_canonical_hash();
+        let root_pos_hash = game_state.position.get_hash();
         let tree = Arc::new(SharedTree::with_tt_and_stop(
             1,
             root_hash,
@@ -188,6 +287,36 @@ impl ParallelSolver {
         }
     }
 
+    fn run_iterative_deepening<R, H>(
+        solver: &mut Self,
+        stop_flag: &Arc<AtomicBool>,
+        mut depth: usize,
+        hooks: &mut H,
+    ) -> R
+    where
+        H: IterativeDeepeningHooks<R>,
+    {
+        loop {
+            if stop_flag.load(Ordering::Acquire) {
+                return hooks.on_stop(solver);
+            }
+            hooks.before_solve(depth, solver);
+            let found = hooks.solve(solver);
+            if stop_flag.load(Ordering::Acquire) || solver.tree.stop_requested() {
+                return hooks.on_stop(solver);
+            }
+            hooks.after_solve(depth, solver, found);
+            if found {
+                return hooks.on_found(depth, solver);
+            }
+            depth += 1;
+            if stop_flag.load(Ordering::Acquire) {
+                return hooks.on_stop(solver);
+            }
+            solver.increase_depth_limit(depth);
+        }
+    }
+
     pub fn benchmark_next_move(
         initial_board: &[u8],
         params: SearchParams,
@@ -208,7 +337,7 @@ impl ParallelSolver {
                 return None;
             }
             let start = Instant::now();
-            let mut depth = 1usize;
+            let depth = 1usize;
             let mut solver = Self::with_tt_and_stop(
                 base_board.clone(),
                 params,
@@ -217,41 +346,19 @@ impl ParallelSolver {
                 None,
                 None,
             );
-            let mut prev_stats = TreeStatsSnapshot::default();
-            let mut prev_elapsed = 0.0;
-            loop {
-                if stop_flag.load(Ordering::Acquire) {
-                    return None;
-                }
-                let found = solver.solve(false);
-                if stop_flag.load(Ordering::Acquire) || solver.tree.stop_requested() {
-                    return None;
-                }
-                let elapsed = start.elapsed().as_secs_f64();
-                let current_stats = solver.tree.stats_snapshot();
-                let delta_stats = current_stats.delta_since(&prev_stats);
-                let delta_elapsed = (elapsed - prev_elapsed).max(0.0);
-                let tt_size = solver.tree.get_tt_size() as u64;
-                let node_table_size = solver.tree.get_node_table_size() as u64;
-                let entry = per_depth.entry(depth).or_default();
-                entry.add_sample(delta_stats, delta_elapsed, tt_size, node_table_size);
-                prev_stats = current_stats;
-                prev_elapsed = elapsed;
-                if found {
-                    solver.get_best_move()?;
-                    total_elapsed_secs += elapsed;
-                    total_stats.add_assign(&current_stats);
-                    total_tt_size = total_tt_size.saturating_add(tt_size);
-                    total_node_table_size =
-                        total_node_table_size.saturating_add(node_table_size);
-                    break;
-                }
-                depth += 1;
-                if stop_flag.load(Ordering::Acquire) {
-                    return None;
-                }
-                solver.increase_depth_limit(depth);
-            }
+            let mut hooks = BenchmarkDeepening {
+                start,
+                per_depth: &mut per_depth,
+                prev_stats: TreeStatsSnapshot::default(),
+                prev_elapsed: 0.0,
+                last_tt_size: 0,
+                last_node_table_size: 0,
+                total_stats: &mut total_stats,
+                total_elapsed_secs: &mut total_elapsed_secs,
+                total_tt_size: &mut total_tt_size,
+                total_node_table_size: &mut total_node_table_size,
+            };
+            Self::run_iterative_deepening(&mut solver, stop_flag, depth, &mut hooks)?;
         }
         let runs_count = runs as u64;
         let runs_divisor = f64::from(u32::try_from(runs).unwrap_or(u32::MAX));
@@ -277,33 +384,24 @@ impl ParallelSolver {
         board_size: usize,
         win_len: usize,
         num_threads: usize,
+        evaluation: EvaluationConfig,
         verbose: bool,
     ) -> Option<(usize, usize)> {
-        Self::find_best_move_with_tt(
-            initial_board,
-            board_size,
-            win_len,
-            num_threads,
-            verbose,
-            None,
-            None,
-        )
-        .0
+        let params = SearchParams::new(board_size, win_len, num_threads, evaluation);
+        Self::find_best_move_with_tt(initial_board, params, verbose, None, None).0
     }
 
     #[must_use]
     pub fn find_best_move_with_tt(
         initial_board: Vec<u8>,
-        board_size: usize,
-        win_len: usize,
-        num_threads: usize,
+        params: SearchParams,
         verbose: bool,
         existing_tt: Option<TranspositionTable>,
         existing_node_table: Option<NodeTable>,
     ) -> (Option<(usize, usize)>, TranspositionTable, NodeTable) {
         Self::find_best_move_with_tt_and_stop(
             initial_board,
-            SearchParams::new(board_size, win_len, num_threads),
+            params,
             verbose,
             &Arc::new(AtomicBool::new(false)),
             existing_tt,
@@ -320,7 +418,7 @@ impl ParallelSolver {
         existing_tt: Option<TranspositionTable>,
         existing_node_table: Option<NodeTable>,
     ) -> (Option<(usize, usize)>, TranspositionTable, NodeTable) {
-        let mut depth = 1usize;
+        let depth = 1usize;
         let mut solver = Self::with_tt_and_stop(
             initial_board,
             params,
@@ -329,35 +427,8 @@ impl ParallelSolver {
             existing_tt,
             existing_node_table,
         );
-        loop {
-            if stop_flag.load(Ordering::Acquire) {
-                return (None, solver.get_tt(), solver.get_node_table());
-            }
-            if verbose {
-                println!("尝试搜索深度 D={depth}", depth = format_sci_usize(depth));
-            }
-            let found = solver.solve(verbose);
-            if stop_flag.load(Ordering::Acquire) || solver.tree.stop_requested() {
-                return (None, solver.get_tt(), solver.get_node_table());
-            }
-            if found {
-                let best_move = solver.get_best_move();
-                if verbose {
-                    let path_len = format_sci_u64(solver.root_win_len());
-                    let best_move_display = best_move.map_or_else(
-                        || "None".to_string(),
-                        |(x, y)| format!("({}, {})", format_sci_usize(x), format_sci_usize(y)),
-                    );
-                    println!("在 {path_len} 步内找到路径，最佳首步: {best_move_display}");
-                }
-                return (best_move, solver.get_tt(), solver.get_node_table());
-            }
-            depth += 1;
-            if stop_flag.load(Ordering::Acquire) {
-                return (None, solver.get_tt(), solver.get_node_table());
-            }
-            solver.increase_depth_limit(depth);
-        }
+        let mut hooks = BestMoveDeepening { verbose };
+        Self::run_iterative_deepening(&mut solver, stop_flag, depth, &mut hooks)
     }
 
     #[must_use]

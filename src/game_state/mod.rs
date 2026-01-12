@@ -1,6 +1,8 @@
 use std::sync::Arc;
 
 use smallvec::SmallVec;
+
+use crate::config::EvaluationConfig;
 mod bitboard;
 mod evaluation;
 mod moves;
@@ -41,8 +43,9 @@ pub struct MoveGenBuffers<'a> {
     pub out_moves: &'a mut Vec<Coord>,
     pub proximity_scores: Option<&'a [f32]>,
 }
+pub(crate) struct GomokuRules;
 #[derive(Clone)]
-pub struct GomokuGameState {
+pub struct GomokuPosition {
     pub board: Vec<u8>,
     pub bitboard: Bitboard,
     pub board_size: usize,
@@ -50,9 +53,21 @@ pub struct GomokuGameState {
     pub hasher: Arc<ZobristHasher>,
     pub hash: u64,
     pub threat_index: ThreatIndex,
+}
+#[derive(Clone)]
+pub struct GomokuEvaluator {
+    pub config: EvaluationConfig,
+    pub(crate) proximity_kernel: Vec<Vec<f32>>,
+    pub(crate) positional_bonus: Vec<f32>,
+}
+#[derive(Clone)]
+pub(crate) struct GomokuMoveCache {
     pub candidate_moves: SmallVec<[u64; 8]>,
     pub(crate) candidate_move_history: MoveHistory,
-    pub(crate) proximity_kernel: Vec<Vec<f32>>,
-    pub(crate) proximity_scale: f32,
-    pub(crate) positional_bonus: Vec<f32>,
+}
+#[derive(Clone)]
+pub struct GomokuGameState {
+    pub position: GomokuPosition,
+    pub evaluator: GomokuEvaluator,
+    pub(crate) move_cache: GomokuMoveCache,
 }

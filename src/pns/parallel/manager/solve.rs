@@ -61,6 +61,7 @@ impl ParallelSolver {
 
     fn current_turn(&self) -> usize {
         self.base_game_state
+            .position
             .board
             .iter()
             .fold(0usize, |count, &cell| count + usize::from(cell == 2))

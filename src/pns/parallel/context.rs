@@ -4,7 +4,7 @@ use hashbrown::HashMap;
 
 use super::node::NodeRef;
 use crate::game_state::{
-    BitboardWorkspace, GomokuGameState, MoveApplyTiming, MoveGenBuffers, MoveGenTiming,
+    BitboardWorkspace, GomokuGameState, GomokuRules, MoveApplyTiming, MoveGenBuffers, MoveGenTiming,
 };
 const NODE_CACHE_CAPACITY: usize = 1024;
 type NodeKey = (u64, usize);
@@ -74,13 +74,20 @@ pub struct ThreadLocalContext {
 }
 impl ThreadLocalContext {
     pub fn new(game_state: GomokuGameState, thread_id: usize) -> Self {
-        let num_words = game_state.bitboard.num_words();
-        let board_cells = game_state.board_size.saturating_mul(game_state.board_size);
+        let num_words = game_state.position.bitboard.num_words();
+        let board_cells = game_state
+            .position
+            .board_size
+            .saturating_mul(game_state.position.board_size);
         let mut current_proximity_scores = vec![0.0f32; board_cells.saturating_mul(2)];
         let (player_one_scores, player_two_scores) =
             current_proximity_scores.split_at_mut(board_cells);
-        game_state.rebuild_proximity_scores(1, player_one_scores);
-        game_state.rebuild_proximity_scores(2, player_two_scores);
+        game_state
+            .evaluator
+            .rebuild_proximity_scores(&game_state.position, 1, player_one_scores);
+        game_state
+            .evaluator
+            .rebuild_proximity_scores(&game_state.position, 2, player_two_scores);
         Self {
             game_state,
             path_stack: Vec::with_capacity(256),
@@ -96,46 +103,33 @@ impl ThreadLocalContext {
     }
 
     pub fn make_move(&mut self, mov: (usize, usize), player: u8) {
-        self.game_state.make_move(mov, player);
-        let board_cells = self
-            .game_state
-            .board_size
-            .saturating_mul(self.game_state.board_size);
-        let game_state = &self.game_state;
-        if let Some(scores) =
-            proximity_scores_for_player_mut(&mut self.current_proximity_scores, board_cells, player)
-        {
-            game_state.apply_proximity_delta(mov, 1.0, scores);
-        }
+        GomokuRules::make_move(
+            &mut self.game_state.position,
+            &mut self.game_state.move_cache,
+            mov,
+            player,
+        );
+        self.update_proximity_scores(mov, player, 1.0);
     }
 
     pub fn make_move_with_timing(&mut self, mov: (usize, usize), player: u8) -> MoveApplyTiming {
-        let timing = self.game_state.make_move_with_timing(mov, player);
-        let board_cells = self
-            .game_state
-            .board_size
-            .saturating_mul(self.game_state.board_size);
-        let game_state = &self.game_state;
-        if let Some(scores) =
-            proximity_scores_for_player_mut(&mut self.current_proximity_scores, board_cells, player)
-        {
-            game_state.apply_proximity_delta(mov, 1.0, scores);
-        }
+        let timing = GomokuRules::make_move_with_timing(
+            &mut self.game_state.position,
+            &mut self.game_state.move_cache,
+            mov,
+            player,
+        );
+        self.update_proximity_scores(mov, player, 1.0);
         timing
     }
 
     pub fn undo_move(&mut self, mov: (usize, usize), player: u8) {
-        let board_cells = self
-            .game_state
-            .board_size
-            .saturating_mul(self.game_state.board_size);
-        let game_state = &self.game_state;
-        if let Some(scores) =
-            proximity_scores_for_player_mut(&mut self.current_proximity_scores, board_cells, player)
-        {
-            game_state.apply_proximity_delta(mov, -1.0, scores);
-        }
-        self.game_state.undo_move(mov);
+        self.update_proximity_scores(mov, player, -1.0);
+        GomokuRules::undo_move(
+            &mut self.game_state.position,
+            &mut self.game_state.move_cache,
+            mov,
+        );
     }
 
     pub fn push_path(
@@ -164,22 +158,23 @@ impl ThreadLocalContext {
     }
 
     pub fn check_win(&self, player: u8) -> bool {
-        self.game_state.check_win(player)
+        GomokuRules::check_win(&self.game_state.position, player)
     }
 
     pub fn get_canonical_hash(&self) -> u64 {
-        self.game_state.get_canonical_hash()
+        self.game_state.position.get_canonical_hash()
     }
 
     pub const fn get_hash(&self) -> u64 {
-        self.game_state.get_hash()
+        self.game_state.position.get_hash()
     }
 
     pub fn refresh_legal_moves(&mut self, player: u8) -> MoveGenTiming {
         let board_cells = self
             .game_state
+            .position
             .board_size
-            .saturating_mul(self.game_state.board_size);
+            .saturating_mul(self.game_state.position.board_size);
         let proximity_scores =
             proximity_scores_for_player(&self.current_proximity_scores, board_cells, player);
         let mut buffers = MoveGenBuffers {
@@ -189,8 +184,13 @@ impl ThreadLocalContext {
             out_moves: &mut self.legal_moves,
             proximity_scores: Some(proximity_scores),
         };
-        self.game_state
-            .get_legal_moves_into(player, &mut self.bitboard_workspace, &mut buffers)
+        GomokuRules::get_legal_moves_into(
+            &self.game_state.position,
+            &self.game_state.evaluator,
+            player,
+            &mut self.bitboard_workspace,
+            &mut buffers,
+        )
     }
 
     pub fn get_cached_node(&mut self, key: &(u64, usize)) -> Option<NodeRef> {
@@ -199,6 +199,22 @@ impl ThreadLocalContext {
 
     pub fn cache_node(&mut self, key: (u64, usize), node: NodeRef) {
         self.node_cache.insert(key, node);
+    }
+
+    fn update_proximity_scores(&mut self, mov: (usize, usize), player: u8, delta: f32) {
+        let board_cells = self
+            .game_state
+            .position
+            .board_size
+            .saturating_mul(self.game_state.position.board_size);
+        let game_state = &self.game_state;
+        if let Some(scores) =
+            proximity_scores_for_player_mut(&mut self.current_proximity_scores, board_cells, player)
+        {
+            game_state
+                .evaluator
+                .apply_proximity_delta(&game_state.position, mov, delta, scores);
+        }
     }
 }
 fn proximity_scores_for_player(scores: &[f32], board_cells: usize, player: u8) -> &[f32] {

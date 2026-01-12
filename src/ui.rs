@@ -11,7 +11,7 @@ use std::{
 
 use crate::{
     config::Config,
-    game_state::{GomokuGameState, ZobristHasher},
+    game_state::{GomokuGameState, GomokuRules, ZobristHasher},
     pns::{NodeTable, ParallelSolver, SearchParams, TranspositionTable},
     utils::board_index,
 };
@@ -54,14 +54,29 @@ pub fn run_benchmark(exit_flag: &Arc<AtomicBool>, config: &Config) {
             return;
         }
     };
-    if check_win(&board, config.board_size, config.win_len, 1)
-        || check_win(&board, config.board_size, config.win_len, 2)
-    {
+    if check_win(
+        &board,
+        config.board_size,
+        config.win_len,
+        config.evaluation,
+        1,
+    ) || check_win(
+        &board,
+        config.board_size,
+        config.win_len,
+        config.evaluation,
+        2,
+    ) {
         eprintln!("基准残局已出现胜负，无法用于基准测试。");
         return;
     }
     println!("开始基准测试：固定残局，计算下一步棋，循环 {BENCHMARK_RUNS} 次。");
-    let params = SearchParams::new(config.board_size, config.win_len, config.num_threads);
+    let params = SearchParams::new(
+        config.board_size,
+        config.win_len,
+        config.num_threads,
+        config.evaluation,
+    );
     let Some(result) =
         ParallelSolver::benchmark_next_move(&board, params, BENCHMARK_RUNS, exit_flag)
     else {
@@ -174,7 +189,7 @@ fn ai_turn(
         (board_size / 2, board_size / 2)
     } else {
         println!("程序正在思考...");
-        let params = SearchParams::new(board_size, win_len, num_threads);
+        let params = SearchParams::new(board_size, win_len, num_threads, config.evaluation);
         let (best_move, new_tt, new_node_table) = ParallelSolver::find_best_move_with_tt_and_stop(
             board.to_vec(),
             params,
@@ -197,7 +212,7 @@ fn ai_turn(
     }
     println!("程序选择落子于: {mov:?}");
     board[board_index(board_size, mov.0, mov.1)] = 1;
-    if check_win(board, board_size, win_len, 1) {
+    if check_win(board, board_size, win_len, config.evaluation, 1) {
         println!("\n最终棋盘:");
         print_board(board, board_size);
         println!("程序获胜");
@@ -281,8 +296,15 @@ fn read_line_with_exit(exit_flag: &AtomicBool) -> Result<String, InputError> {
         }
     }
 }
-fn check_win(board: &[u8], board_size: usize, win_len: usize, player: u8) -> bool {
+fn check_win(
+    board: &[u8],
+    board_size: usize,
+    win_len: usize,
+    evaluation: crate::config::EvaluationConfig,
+    player: u8,
+) -> bool {
     let hasher = Arc::new(ZobristHasher::new(board_size));
-    let game_state = GomokuGameState::new(board.to_vec(), board_size, hasher, 1, win_len);
-    game_state.check_win(player)
+    let game_state =
+        GomokuGameState::new(board.to_vec(), board_size, hasher, 1, win_len, evaluation);
+    GomokuRules::check_win(&game_state.position, player)
 }

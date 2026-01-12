@@ -5,3 +5,16 @@ verbose: true
 num_threads: 0
 min_available_memory_mb: 2048
 memory_check_interval_ms: 500
+evaluation:
+  proximity_kernel_size: 7
+  proximity_scale: 60.0
+  positional_bonus_scale: 0.1
+  score_win: 10000000.0
+  score_live_four: 500000.0
+  score_blocked_four: 15000.0
+  score_live_three: 10000.0
+  score_live_two: 200.0
+  score_block_win: 8000000.0
+  score_block_live_four: 400000.0
+  score_block_blocked_four: 12000.0
+  score_block_live_three: 8000.0

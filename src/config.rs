@@ -1,12 +1,28 @@
 use std::{fs, process, thread};
 
 use serde::Deserialize;
+#[derive(Debug, Deserialize, Clone, Copy)]
+pub struct EvaluationConfig {
+    pub proximity_kernel_size: usize,
+    pub proximity_scale: f32,
+    pub positional_bonus_scale: f32,
+    pub score_win: f32,
+    pub score_live_four: f32,
+    pub score_blocked_four: f32,
+    pub score_live_three: f32,
+    pub score_live_two: f32,
+    pub score_block_win: f32,
+    pub score_block_live_four: f32,
+    pub score_block_blocked_four: f32,
+    pub score_block_live_three: f32,
+}
 #[derive(Debug, Deserialize)]
 pub struct Config {
     pub board_size: usize,
     pub win_len: usize,
     pub verbose: bool,
     pub num_threads: usize,
+    pub evaluation: EvaluationConfig,
     #[serde(default = "default_min_available_memory_mb")]
     pub min_available_memory_mb: u64,
     #[serde(default = "default_memory_check_interval_ms")]

@@ -1,7 +1,20 @@
-use super::{Coord, GomokuGameState};
-impl GomokuGameState {
-    pub(crate) fn init_proximity_kernel(_board_size: usize) -> (Vec<Vec<f32>>, f32) {
-        let k_size = 7;
+use super::{Coord, GomokuEvaluator, GomokuPosition};
+use crate::config::EvaluationConfig;
+
+impl GomokuEvaluator {
+    #[must_use]
+    pub fn new(board_size: usize, config: EvaluationConfig) -> Self {
+        let proximity_kernel = Self::init_proximity_kernel(config);
+        let positional_bonus = Self::init_positional_bonus(board_size, config);
+        Self {
+            config,
+            proximity_kernel,
+            positional_bonus,
+        }
+    }
+
+    fn init_proximity_kernel(config: EvaluationConfig) -> Vec<Vec<f32>> {
+        let k_size = config.proximity_kernel_size;
         let k_center = k_size / 2;
         let mut proximity_kernel = vec![vec![0.0f32; k_size]; k_size];
         for (r, row) in proximity_kernel.iter_mut().enumerate() {
@@ -11,10 +24,10 @@ impl GomokuGameState {
                 *cell = 1.0 / (f32::from(dist_u16) + 1.0);
             }
         }
-        (proximity_kernel, 60.0)
+        proximity_kernel
     }
 
-    pub(crate) fn init_positional_bonus(board_size: usize) -> Vec<f32> {
+    fn init_positional_bonus(board_size: usize, config: EvaluationConfig) -> Vec<f32> {
         let center = board_size / 2;
         let mut positional_bonus = vec![0.0f32; board_size.saturating_mul(board_size)];
         for r in 0..board_size {
@@ -24,43 +37,65 @@ impl GomokuGameState {
                 let bonus = row_bonus + col_bonus;
                 let bonus_u16 = u16::try_from(bonus).unwrap_or(u16::MAX);
                 let idx = r.saturating_mul(board_size).saturating_add(c);
-                positional_bonus[idx] = f32::from(bonus_u16) * 0.1;
+                positional_bonus[idx] = f32::from(bonus_u16) * config.positional_bonus_scale;
             }
         }
         positional_bonus
     }
 
-    fn add_proximity_scores(&self, player: u8, score_buffer: &mut [f32]) {
-        let board_size = self.board_size;
-        let scale = self.proximity_scale;
+    fn add_proximity_scores(
+        &self,
+        position: &GomokuPosition,
+        player: u8,
+        score_buffer: &mut [f32],
+    ) {
+        let board_size = position.board_size;
+        let scale = self.config.proximity_scale;
         for r in 0..board_size {
             for c in 0..board_size {
-                if self.board[self.board_index(r, c)] == player {
-                    self.apply_proximity_kernel_scaled((r, c), scale, score_buffer);
+                if position.board[position.board_index(r, c)] == player {
+                    self.apply_proximity_kernel_scaled(board_size, (r, c), scale, score_buffer);
                 }
             }
         }
     }
 
-    pub(crate) fn rebuild_proximity_scores(&self, player: u8, target: &mut [f32]) {
-        let needed_len = self.board_size.saturating_mul(self.board_size);
+    pub(crate) fn rebuild_proximity_scores(
+        &self,
+        position: &GomokuPosition,
+        player: u8,
+        target: &mut [f32],
+    ) {
+        let needed_len = position.board_size.saturating_mul(position.board_size);
         if target.len() != needed_len {
             return;
         }
         target.fill(0.0);
-        self.add_proximity_scores(player, target);
+        self.add_proximity_scores(position, player, target);
     }
 
-    pub(crate) fn apply_proximity_delta(&self, mov: Coord, delta: f32, target: &mut [f32]) {
-        let needed_len = self.board_size.saturating_mul(self.board_size);
+    pub(crate) fn apply_proximity_delta(
+        &self,
+        position: &GomokuPosition,
+        mov: Coord,
+        delta: f32,
+        target: &mut [f32],
+    ) {
+        let needed_len = position.board_size.saturating_mul(position.board_size);
         if target.len() != needed_len {
             return;
         }
-        let scale = self.proximity_scale * delta;
-        self.apply_proximity_kernel_scaled(mov, scale, target);
+        let scale = self.config.proximity_scale * delta;
+        self.apply_proximity_kernel_scaled(position.board_size, mov, scale, target);
     }
 
-    fn apply_proximity_kernel_scaled(&self, mov: Coord, scale: f32, target: &mut [f32]) {
+    fn apply_proximity_kernel_scaled(
+        &self,
+        board_size: usize,
+        mov: Coord,
+        scale: f32,
+        target: &mut [f32],
+    ) {
         let (r, c) = mov;
         let kernel_h = self.proximity_kernel.len();
         let pad_h = kernel_h / 2;
@@ -69,7 +104,7 @@ impl GomokuGameState {
         let c = isize::try_from(c).ok();
         let pad_h = isize::try_from(pad_h).ok();
         let pad_w = isize::try_from(pad_w).ok();
-        let board_limit = isize::try_from(self.board_size).ok();
+        let board_limit = isize::try_from(board_size).ok();
         let (Some(r), Some(c), Some(pad_h), Some(pad_w), Some(board_limit)) =
             (r, c, pad_h, pad_w, board_limit)
         else {
@@ -81,7 +116,6 @@ impl GomokuGameState {
         let Some(base_c) = c.checked_add(pad_w) else {
             return;
         };
-        let board_size = self.board_size;
         for (ki, kernel_row) in self.proximity_kernel.iter().enumerate() {
             let Some(ki) = isize::try_from(ki).ok() else {
                 return;
@@ -111,25 +145,16 @@ impl GomokuGameState {
         }
     }
 
-    pub(crate) fn score_moves(
-        &self,
-        player: u8,
-        moves_to_score: &[Coord],
-        score_buffer: &mut Vec<f32>,
-    ) -> Vec<(Coord, f32)> {
-        let mut scored_moves = Vec::with_capacity(moves_to_score.len());
-        self.score_moves_into(player, moves_to_score, score_buffer, &mut scored_moves);
-        scored_moves
-    }
-
     pub(crate) fn score_moves_into(
         &self,
+        position: &GomokuPosition,
         player: u8,
         moves_to_score: &[Coord],
         score_buffer: &mut Vec<f32>,
         scored_moves: &mut Vec<(Coord, f32)>,
     ) {
         self.score_moves_into_with_proximity(
+            position,
             player,
             moves_to_score,
             &[],
@@ -140,26 +165,19 @@ impl GomokuGameState {
 
     pub(crate) fn score_moves_into_with_proximity(
         &self,
+        position: &GomokuPosition,
         player: u8,
         moves_to_score: &[Coord],
         proximity_scores: &[f32],
         score_buffer: &mut Vec<f32>,
         scored_moves: &mut Vec<(Coord, f32)>,
     ) {
-        const SCORE_WIN: f32 = 10_000_000.0;
-        const SCORE_LIVE_FOUR: f32 = 500_000.0;
-        const SCORE_BLOCKED_FOUR: f32 = 15_000.0;
-        const SCORE_LIVE_THREE: f32 = 10_000.0;
-        const SCORE_LIVE_TWO: f32 = 200.0;
-        const SCORE_BLOCK_WIN: f32 = 8_000_000.0;
-        const SCORE_BLOCK_LIVE_FOUR: f32 = 400_000.0;
-        const SCORE_BLOCK_BLOCKED_FOUR: f32 = 12_000.0;
-        const SCORE_BLOCK_LIVE_THREE: f32 = 8_000.0;
+        let evaluation = self.config;
         scored_moves.clear();
         if moves_to_score.is_empty() {
             return;
         }
-        let board_size = self.board_size;
+        let board_size = position.board_size;
         let needed_len = board_size.saturating_mul(board_size);
         if score_buffer.len() != needed_len {
             score_buffer.resize(needed_len, 0.0);
@@ -170,25 +188,27 @@ impl GomokuGameState {
                 *score += *proximity;
             }
         } else {
-            self.add_proximity_scores(player, score_buffer);
+            self.add_proximity_scores(position, player, score_buffer);
         }
         let patterns_to_score = [
-            (self.win_len - 1, 0, SCORE_WIN),
-            (self.win_len - 2, 0, SCORE_LIVE_FOUR),
-            (self.win_len - 3, 0, SCORE_LIVE_THREE),
-            (self.win_len.saturating_sub(4), 0, SCORE_LIVE_TWO),
-            (self.win_len - 2, 1, SCORE_BLOCKED_FOUR),
-            (0, self.win_len - 1, SCORE_BLOCK_WIN),
-            (0, self.win_len - 2, SCORE_BLOCK_LIVE_FOUR),
-            (0, self.win_len - 3, SCORE_BLOCK_LIVE_THREE),
-            (1, self.win_len - 2, SCORE_BLOCK_BLOCKED_FOUR),
+            (position.win_len - 1, 0, evaluation.score_win),
+            (position.win_len - 2, 0, evaluation.score_live_four),
+            (position.win_len - 3, 0, evaluation.score_live_three),
+            (position.win_len.saturating_sub(4), 0, evaluation.score_live_two),
+            (position.win_len - 2, 1, evaluation.score_blocked_four),
+            (0, position.win_len - 1, evaluation.score_block_win),
+            (0, position.win_len - 2, evaluation.score_block_live_four),
+            (0, position.win_len - 3, evaluation.score_block_live_three),
+            (1, position.win_len - 2, evaluation.score_block_blocked_four),
         ];
         for &(p_req, o_req, score) in &patterns_to_score {
-            let windows = self.threat_index.get_pattern_windows(player, p_req, o_req);
+            let windows = position
+                .threat_index
+                .get_pattern_windows(player, p_req, o_req);
             for window_idx in windows {
-                let window = &self.threat_index.all_windows[window_idx];
+                let window = &position.threat_index.all_windows[window_idx];
                 for &(r, c) in &window.coords {
-                    if self.board[self.board_index(r, c)] == 0 {
+                    if position.board[position.board_index(r, c)] == 0 {
                         let idx = r.saturating_mul(board_size).saturating_add(c);
                         score_buffer[idx] += score;
                     }
