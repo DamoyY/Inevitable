@@ -4,23 +4,20 @@ version = "0.0.0"
 edition = "2024"
 
 [dependencies]
-mimalloc = "*"
-rand = "*"
-parking_lot = "*"
-serde = { version = "*", features = ["derive"] }
-serde_yaml = "*"
-ctrlc = "*"
-smallvec = "*"
-hashbrown = "*"
 ahash = "*"
+ctrlc = "*"
+hashbrown = "*"
+mimalloc = "*"
+parking_lot = "*"
+rand = "*"
+serde = { version = "*", features = ["derive"] }
+serde_yaml = { package = "serde_yaml_ng", version = "*" }
+smallvec = "*"
 
 [lints.clippy]
 all = "warn"
 pedantic = "warn"
 nursery = "warn"
-
-[profile.dev]
-opt-level = 1
 
 [profile.release]
 opt-level = 3

@@ -194,7 +194,11 @@ impl GomokuEvaluator {
             (position.win_len - 1, 0, evaluation.score_win),
             (position.win_len - 2, 0, evaluation.score_live_four),
             (position.win_len - 3, 0, evaluation.score_live_three),
-            (position.win_len.saturating_sub(4), 0, evaluation.score_live_two),
+            (
+                position.win_len.saturating_sub(4),
+                0,
+                evaluation.score_live_two,
+            ),
             (position.win_len - 2, 1, evaluation.score_blocked_four),
             (0, position.win_len - 1, evaluation.score_block_win),
             (0, position.win_len - 2, evaluation.score_block_live_four),

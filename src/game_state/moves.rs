@@ -2,21 +2,10 @@ use std::time::Instant;
 
 use super::{
     Bitboard, BitboardWorkspace, Coord, GomokuEvaluator, GomokuMoveCache, GomokuPosition,
-    GomokuRules, MoveApplyTiming, MoveGenBuffers, MoveGenTiming,
+    GomokuRules, MoveApplyTiming, MoveGenBuffers, MoveGenTiming, record_duration_add_ns,
+    record_duration_ns,
 };
 use crate::utils::duration_to_ns;
-
-fn record_duration_ns<F: FnOnce()>(field: &mut u64, f: F) {
-    let start = Instant::now();
-    f();
-    *field = duration_to_ns(start.elapsed());
-}
-
-fn record_duration_add_ns<F: FnOnce()>(field: &mut u64, f: F) {
-    let start = Instant::now();
-    f();
-    *field = field.saturating_add(duration_to_ns(start.elapsed()));
-}
 
 impl GomokuRules {
     pub(crate) fn rebuild_candidate_moves(
@@ -75,49 +64,6 @@ impl GomokuRules {
                 }
             }
         }
-    }
-
-    fn sort_scored_moves(scored_moves: &mut [(Coord, f32)]) {
-        scored_moves.sort_unstable_by(|a, b| b.1.total_cmp(&a.1));
-    }
-
-    fn fill_moves_from_scored(moves: &mut Vec<Coord>, scored_moves: &[(Coord, f32)]) {
-        moves.clear();
-        moves.extend(scored_moves.iter().map(|(coord, _)| *coord));
-    }
-
-    fn score_and_sort_moves_in_place(
-        evaluator: &GomokuEvaluator,
-        position: &GomokuPosition,
-        player: u8,
-        moves: &mut Vec<Coord>,
-        score_buffer: &mut Vec<f32>,
-        scored_moves: &mut Vec<(Coord, f32)>,
-    ) {
-        evaluator.score_moves_into(position, player, moves, score_buffer, scored_moves);
-        Self::sort_scored_moves(scored_moves);
-        Self::fill_moves_from_scored(moves, scored_moves);
-    }
-
-    fn score_and_sort_moves_in_place_with_proximity(
-        evaluator: &GomokuEvaluator,
-        position: &GomokuPosition,
-        player: u8,
-        moves: &mut Vec<Coord>,
-        proximity_scores: &[f32],
-        score_buffer: &mut Vec<f32>,
-        scored_moves: &mut Vec<(Coord, f32)>,
-    ) {
-        evaluator.score_moves_into_with_proximity(
-            position,
-            player,
-            moves,
-            proximity_scores,
-            score_buffer,
-            scored_moves,
-        );
-        Self::sort_scored_moves(scored_moves);
-        Self::fill_moves_from_scored(moves, scored_moves);
     }
 
     pub fn make_move(

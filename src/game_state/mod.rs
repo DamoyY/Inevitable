@@ -1,17 +1,17 @@
-use std::sync::Arc;
+use std::{sync::Arc, time::Instant};
 
 use smallvec::SmallVec;
 
 use crate::config::EvaluationConfig;
+use crate::utils::duration_to_ns;
 mod bitboard;
 mod evaluation;
 mod moves;
 mod state;
 mod threat_index;
-mod zobrist;
 pub use bitboard::{Bitboard, BitboardWorkspace};
 pub use threat_index::ThreatIndex;
-pub use zobrist::ZobristHasher;
+pub use state::ZobristHasher;
 pub type Coord = (usize, usize);
 pub type MoveHistory = Vec<(Coord, SmallVec<[u64; 8]>)>;
 pub type ForcingMoves = (Vec<Coord>, Vec<Coord>);
@@ -43,7 +43,62 @@ pub struct MoveGenBuffers<'a> {
     pub out_moves: &'a mut Vec<Coord>,
     pub proximity_scores: Option<&'a [f32]>,
 }
+fn record_duration_ns<F: FnOnce()>(field: &mut u64, f: F) {
+    let start = Instant::now();
+    f();
+    *field = duration_to_ns(start.elapsed());
+}
+
+fn record_duration_add_ns<F: FnOnce()>(field: &mut u64, f: F) {
+    let start = Instant::now();
+    f();
+    *field = field.saturating_add(duration_to_ns(start.elapsed()));
+}
 pub(crate) struct GomokuRules;
+impl GomokuRules {
+    fn sort_scored_moves(scored_moves: &mut [(Coord, f32)]) {
+        scored_moves.sort_unstable_by(|a, b| b.1.total_cmp(&a.1));
+    }
+
+    fn fill_moves_from_scored(moves: &mut Vec<Coord>, scored_moves: &[(Coord, f32)]) {
+        moves.clear();
+        moves.extend(scored_moves.iter().map(|(coord, _)| *coord));
+    }
+
+    fn score_and_sort_moves_in_place(
+        evaluator: &GomokuEvaluator,
+        position: &GomokuPosition,
+        player: u8,
+        moves: &mut Vec<Coord>,
+        score_buffer: &mut Vec<f32>,
+        scored_moves: &mut Vec<(Coord, f32)>,
+    ) {
+        evaluator.score_moves_into(position, player, moves, score_buffer, scored_moves);
+        Self::sort_scored_moves(scored_moves);
+        Self::fill_moves_from_scored(moves, scored_moves);
+    }
+
+    fn score_and_sort_moves_in_place_with_proximity(
+        evaluator: &GomokuEvaluator,
+        position: &GomokuPosition,
+        player: u8,
+        moves: &mut Vec<Coord>,
+        proximity_scores: &[f32],
+        score_buffer: &mut Vec<f32>,
+        scored_moves: &mut Vec<(Coord, f32)>,
+    ) {
+        evaluator.score_moves_into_with_proximity(
+            position,
+            player,
+            moves,
+            proximity_scores,
+            score_buffer,
+            scored_moves,
+        );
+        Self::sort_scored_moves(scored_moves);
+        Self::fill_moves_from_scored(moves, scored_moves);
+    }
+}
 #[derive(Clone)]
 pub struct GomokuPosition {
     pub board: Vec<u8>,

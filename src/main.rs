@@ -35,8 +35,7 @@ fn spawn_memory_watchdog(exit_flag: Arc<AtomicBool>, config: &Config) {
 
 fn main() {
     let config = Config::load();
-    let benchmark_mode = std::env::args()
-        .any(|arg| arg == "--benchmark" || arg == "--bench");
+    let benchmark_mode = std::env::args().any(|arg| arg == "--benchmark" || arg == "--bench");
     let exit_flag = Arc::new(AtomicBool::new(false));
     let flag = exit_flag.clone();
     ctrlc::set_handler(move || {

@@ -8,12 +8,10 @@ use hashbrown::HashMap;
 use parking_lot::RwLock;
 
 use super::node::NodeRef;
-use crate::pns::{TTEntry, parallel::TreeStatsSnapshot};
+use crate::pns::{TTEntry, TreeStatsSnapshot};
 pub(super) use crate::utils::duration_to_ns;
-mod evaluation;
 mod expansion;
 mod tree;
-mod update;
 pub use tree::SharedTree;
 const SHARD_COUNT: usize = 64;
 pub struct ShardedMap<K, V> {

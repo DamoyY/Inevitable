@@ -100,7 +100,12 @@ impl PatternBuckets {
         self.nodes[node_idx].bucket = NONE_INDEX;
     }
 
-    pub(super) fn iter(&self, player: u8, p_count: usize, o_count: usize) -> PatternBucketIter<'_> {
+    pub(super) fn iter(
+        &self,
+        player: u8,
+        p_count: usize,
+        o_count: usize,
+    ) -> PatternBucketIter<'_> {
         let bucket_idx = self.bucket_index(player, p_count, o_count);
         PatternBucketIter {
             current: self.buckets[bucket_idx].head,

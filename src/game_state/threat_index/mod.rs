@@ -1,8 +1,8 @@
-use buckets::PatternBuckets;
 use smallvec::SmallVec;
 
 use crate::utils::board_index;
 mod buckets;
+use buckets::PatternBuckets;
 #[derive(Clone)]
 pub struct Window {
     pub coords: Vec<(usize, usize)>,
