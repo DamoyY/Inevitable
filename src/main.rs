@@ -1,15 +1,14 @@
+extern crate alloc;
 use inevitable::alloc_stats::TrackingAllocator;
 #[global_allocator]
 static GLOBAL: TrackingAllocator = TrackingAllocator::new();
-use inevitable::{config::Config, ui, utils::available_memory_bytes};
-use std::{
-    sync::{
-        Arc,
-        atomic::{AtomicBool, Ordering},
-    },
-    thread,
+use alloc::sync::Arc;
+use core::{
+    sync::atomic::{AtomicBool, Ordering},
     time::Duration,
 };
+use inevitable::{config::Config, ui, utils::available_memory_bytes};
+use std::thread;
 fn spawn_memory_watchdog(exit_flag: Arc<AtomicBool>, config: &Config) {
     let min_available_memory_mb = config.min_available_memory_mb;
     let min_available_memory_bytes = min_available_memory_mb.saturating_mul(1024 * 1024);
@@ -24,7 +23,7 @@ fn spawn_memory_watchdog(exit_flag: Arc<AtomicBool>, config: &Config) {
             {
                 eprintln!("剩余内存不足 {min_available_memory_mb}MB，程序将退出。");
                 exit_flag.store(true, Ordering::SeqCst);
-                std::process::exit(1);
+                return;
             }
             thread::sleep(poll_interval);
         }
@@ -34,13 +33,15 @@ fn main() {
     let config = Config::load();
     let benchmark_mode = std::env::args().any(|arg| arg == "--benchmark" || arg == "--bench");
     let exit_flag = Arc::new(AtomicBool::new(false));
-    let flag = exit_flag.clone();
-    ctrlc::set_handler(move || {
+    let flag = Arc::clone(&exit_flag);
+    if let Err(err) = ctrlc::set_handler(move || {
         flag.store(true, Ordering::SeqCst);
         println!("\n收到 Ctrl+C，正在退出...");
-    })
-    .expect("无法设置 Ctrl+C 处理程序");
-    spawn_memory_watchdog(exit_flag.clone(), &config);
+    }) {
+        eprintln!("无法设置 Ctrl+C 处理程序: {err}");
+        panic!("无法设置 Ctrl+C 处理程序");
+    }
+    spawn_memory_watchdog(Arc::clone(&exit_flag), &config);
     if benchmark_mode {
         ui::run_benchmark(&exit_flag, &config);
     } else {

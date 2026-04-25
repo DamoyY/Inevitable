@@ -1,6 +1,6 @@
 use crate::{
     config::Config,
-    game_state::{GomokuGameState, GomokuRules, ZobristHasher},
+    game_state::{GameState, GomokuRules, ZobristHasher},
     pns::{NodeTable, ParallelSolver, SearchParams, TranspositionTable},
     utils::board_index,
 };
@@ -256,11 +256,10 @@ fn check_win(
     board: &[u8],
     board_size: usize,
     win_len: usize,
-    evaluation: crate::config::EvaluationConfig,
+    evaluation: crate::config::EvaluationWeights,
     player: u8,
 ) -> bool {
     let hasher = Arc::new(ZobristHasher::new(board_size));
-    let game_state =
-        GomokuGameState::new(board.to_vec(), board_size, hasher, 1, win_len, evaluation);
+    let game_state = GameState::new(board.to_vec(), board_size, hasher, 1, win_len, evaluation);
     GomokuRules::check_win(&game_state.position, player)
 }

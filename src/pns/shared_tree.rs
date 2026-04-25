@@ -1,15 +1,12 @@
 use super::node::NodeRef;
 use crate::checked;
-use crate::pns::{TTEntry, TreeStatsSnapshot};
-pub(super) use crate::utils::duration_to_ns;
+use crate::pns::TTEntry;
 use ahash::RandomState;
 use alloc::sync::Arc;
-use core::{hash::Hash, sync::atomic::Ordering};
+use core::hash::Hash;
 use hashbrown::HashMap;
 use parking_lot::RwLock;
-mod expansion;
-mod tree;
-pub use tree::SharedTree;
+pub(crate) mod tree;
 const SHARD_COUNT: usize = 64;
 pub struct ShardedMap<K, V> {
     shards: Vec<RwLock<HashMap<K, V, RandomState>>>,
@@ -65,48 +62,3 @@ impl<K: Hash + Eq, V: Clone> Default for ShardedMap<K, V> {
 }
 pub type TranspositionTable = Arc<ShardedMap<(u64, u8), TTEntry>>;
 pub type NodeTable = Arc<ShardedMap<(u64, usize), NodeRef>>;
-impl SharedTree {
-    #[inline]
-    pub fn increment_iterations(&self) {
-        self.stats.iterations.fetch_add(1, Ordering::Relaxed);
-    }
-    #[inline]
-    pub fn increment_expansions(&self) {
-        self.stats.expansions.fetch_add(1, Ordering::Relaxed);
-    }
-    #[inline]
-    #[must_use]
-    pub fn stats_snapshot(&self) -> TreeStatsSnapshot {
-        self.stats.snapshot()
-    }
-    #[inline]
-    pub fn get_tt(&self) -> TranspositionTable {
-        Arc::clone(&self.transposition_table)
-    }
-    #[inline]
-    pub fn get_node_table(&self) -> NodeTable {
-        Arc::clone(&self.node_table)
-    }
-    #[inline]
-    pub fn get_tt_size(&self) -> usize {
-        self.transposition_table.len()
-    }
-    #[inline]
-    pub fn get_node_table_size(&self) -> usize {
-        self.node_table.len()
-    }
-    #[inline]
-    pub fn lookup_tt(&self, hash: u64, player: u8) -> Option<TTEntry> {
-        self.stats.tt_lookups.fetch_add(1, Ordering::Relaxed);
-        let entry = self.transposition_table.get(&(hash, player));
-        if entry.is_some() {
-            self.stats.tt_hits.fetch_add(1, Ordering::Relaxed);
-        }
-        entry
-    }
-    #[inline]
-    pub fn store_tt(&self, hash: u64, player: u8, entry: TTEntry) {
-        self.transposition_table.insert((hash, player), entry);
-        self.stats.tt_stores.fetch_add(1, Ordering::Relaxed);
-    }
-}

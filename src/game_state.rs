@@ -1,5 +1,5 @@
 use crate::checked;
-use crate::config::EvaluationConfig;
+use crate::config::EvaluationWeights;
 use crate::utils::duration_to_ns;
 use alloc::sync::Arc;
 use smallvec::SmallVec;
@@ -9,9 +9,10 @@ mod evaluation;
 mod moves;
 mod state;
 mod threat_index;
-pub use bitboard::{Bitboard, BitboardWorkspace};
-pub use state::ZobristHasher;
-pub use threat_index::ThreatIndex;
+pub type Bitboard = bitboard::Bitboard;
+pub type BitboardWorkspace = bitboard::BitboardWorkspace;
+pub type ZobristHasher = state::ZobristHasher;
+pub type ThreatIndex = threat_index::ThreatIndex;
 pub type Coord = (usize, usize);
 pub type MoveHistory = Vec<(Coord, SmallVec<[u64; 8]>)>;
 pub type ForcingMoves = (Vec<Coord>, Vec<Coord>);
@@ -44,47 +45,6 @@ fn record_duration_add_ns<F: FnOnce()>(field: &mut u64, operation: F) {
     );
 }
 pub(crate) struct GomokuRules;
-impl GomokuRules {
-    fn sort_scored_moves(scored_moves: &mut [(Coord, f32)]) {
-        scored_moves.sort_unstable_by(|left, right| right.1.total_cmp(&left.1));
-    }
-    fn fill_moves_from_scored(moves: &mut Vec<Coord>, scored_moves: &[(Coord, f32)]) {
-        moves.clear();
-        moves.extend(scored_moves.iter().map(|scored_move| scored_move.0));
-    }
-    fn score_and_sort_moves_in_place(
-        evaluator: &GomokuEvaluator,
-        position: &GomokuPosition,
-        player: u8,
-        moves: &mut Vec<Coord>,
-        score_buffer: &mut Vec<f32>,
-        scored_moves: &mut Vec<(Coord, f32)>,
-    ) {
-        evaluator.score_moves_into(position, player, moves, score_buffer, scored_moves);
-        Self::sort_scored_moves(scored_moves);
-        Self::fill_moves_from_scored(moves, scored_moves);
-    }
-    fn score_and_sort_moves_in_place_with_proximity(
-        evaluator: &GomokuEvaluator,
-        position: &GomokuPosition,
-        player: u8,
-        moves: &mut Vec<Coord>,
-        proximity_scores: &[f32],
-        score_buffer: &mut Vec<f32>,
-        scored_moves: &mut Vec<(Coord, f32)>,
-    ) {
-        evaluator.score_moves_into_with_proximity(
-            position,
-            player,
-            moves,
-            proximity_scores,
-            score_buffer,
-            scored_moves,
-        );
-        Self::sort_scored_moves(scored_moves);
-        Self::fill_moves_from_scored(moves, scored_moves);
-    }
-}
 #[derive(Clone)]
 pub struct GomokuPosition {
     pub board: Vec<u8>,
@@ -97,18 +57,18 @@ pub struct GomokuPosition {
 }
 #[derive(Clone)]
 pub struct GomokuEvaluator {
-    pub config: EvaluationConfig,
+    pub(crate) config: EvaluationWeights,
     pub(crate) proximity_kernel: Vec<Vec<f32>>,
     pub(crate) positional_bonus: Vec<f32>,
 }
 #[derive(Clone)]
 pub(crate) struct GomokuMoveCache {
-    pub candidate_moves: SmallVec<[u64; 8]>,
+    pub(crate) candidate_moves: SmallVec<[u64; 8]>,
     pub(crate) candidate_move_history: MoveHistory,
 }
 #[derive(Clone)]
-pub struct GomokuGameState {
-    pub position: GomokuPosition,
-    pub evaluator: GomokuEvaluator,
+pub struct GameState {
+    pub(crate) position: GomokuPosition,
+    pub(crate) evaluator: GomokuEvaluator,
     pub(crate) move_cache: GomokuMoveCache,
 }

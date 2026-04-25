@@ -136,7 +136,7 @@ pub mod config {
     use serde::Deserialize;
     use std::{fs, process, thread};
     #[derive(Debug, Deserialize, Clone, Copy)]
-    pub struct EvaluationConfig {
+    pub struct EvaluationWeights {
         pub proximity_kernel_size: usize,
         pub proximity_scale: f32,
         pub positional_bonus_scale: f32,
@@ -156,7 +156,7 @@ pub mod config {
         pub win_len: usize,
         pub verbose: bool,
         pub num_threads: usize,
-        pub evaluation: EvaluationConfig,
+        pub evaluation: EvaluationWeights,
         #[serde(default = "default_min_available_memory_mb")]
         pub min_available_memory_mb: u64,
         #[serde(default = "default_memory_check_interval_ms")]

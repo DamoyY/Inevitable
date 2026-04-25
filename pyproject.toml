@@ -1,6 +1,5 @@
 [tool.pyright]
-typeCheckingMode = "basic"
-ignore = ["research/benchmark/MILO"]
+typeCheckingMode = "standard"
 
 [tool.ruff]
 line-length = 79
@@ -32,4 +31,3 @@ lint.ignore = [
 ]
 lint.preview = true
 format.preview = true
-extend-exclude = ["research/benchmark/MILO"]

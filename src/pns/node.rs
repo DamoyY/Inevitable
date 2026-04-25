@@ -1,4 +1,4 @@
-use super::{context::ThreadLocalContext, shared_tree::SharedTree};
+use super::{SharedTree, context::ThreadLocalContext};
 use alloc::sync::Arc;
 use core::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::OnceLock;
@@ -196,7 +196,7 @@ impl Worker {
             let Some(ChildRef {
                 node: best_child,
                 mov,
-            }) = self.tree.select_best_child(&current)
+            }) = SharedTree::select_best_child(&current)
             else {
                 return Some(current);
             };

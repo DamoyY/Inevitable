@@ -1,12 +1,12 @@
 use super::node::NodeRef;
 use crate::game_state::{
-    BitboardWorkspace, GomokuGameState, GomokuRules, MoveApplyTiming, MoveGenBuffers, MoveGenTiming,
+    BitboardWorkspace, GameState, GomokuRules, MoveApplyTiming, MoveGenBuffers, MoveGenTiming,
 };
 use alloc::collections::VecDeque;
 use hashbrown::HashMap;
 const NODE_CACHE_CAPACITY: usize = 1024;
 type NodeKey = (u64, usize);
-struct LocalNodeCache {
+pub(crate) struct LocalNodeCache {
     capacity: usize,
     entries: HashMap<NodeKey, NodeRef>,
     order: VecDeque<NodeKey>,
@@ -56,19 +56,18 @@ pub struct PathEntry {
     pub virtual_dn_added: u64,
 }
 pub struct ThreadLocalContext {
-    pub game_state: GomokuGameState,
-    pub path_stack: Vec<PathEntry>,
-    pub thread_id: usize,
-    pub bitboard_workspace: BitboardWorkspace,
-    pub score_buffer: Vec<f32>,
-    pub current_proximity_scores: Vec<f32>,
-    pub legal_moves: Vec<(usize, usize)>,
-    pub scored_moves: Vec<((usize, usize), f32)>,
-    pub forcing_bits: Vec<u64>,
-    node_cache: LocalNodeCache,
+    pub(crate) game_state: GameState,
+    pub(crate) path_stack: Vec<PathEntry>,
+    pub(crate) bitboard_workspace: BitboardWorkspace,
+    pub(crate) score_buffer: Vec<f32>,
+    pub(crate) current_proximity_scores: Vec<f32>,
+    pub(crate) legal_moves: Vec<(usize, usize)>,
+    pub(crate) scored_moves: Vec<((usize, usize), f32)>,
+    pub(crate) forcing_bits: Vec<u64>,
+    pub(crate) node_cache: LocalNodeCache,
 }
 impl ThreadLocalContext {
-    pub fn new(game_state: GomokuGameState, thread_id: usize) -> Self {
+    pub fn new(game_state: GameState, _thread_id: usize) -> Self {
         let num_words = game_state.position.bitboard.num_words();
         let board_cells = game_state
             .position
@@ -86,7 +85,6 @@ impl ThreadLocalContext {
         Self {
             game_state,
             path_stack: Vec::with_capacity(256),
-            thread_id,
             bitboard_workspace: BitboardWorkspace::new(num_words),
             score_buffer: vec![0.0; board_cells],
             current_proximity_scores,

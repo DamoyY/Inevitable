@@ -1,9 +1,34 @@
 use super::{Coord, GomokuEvaluator, GomokuPosition};
-use crate::config::EvaluationConfig;
+use crate::{checked, config::EvaluationWeights};
+fn board_area(board_size: usize, context: &str) -> usize {
+    checked::mul_usize(board_size, board_size, context)
+}
+fn score_index(board_size: usize, row_index: usize, column_index: usize, context: &str) -> usize {
+    let row_offset = checked::mul_usize(row_index, board_size, context);
+    checked::add_usize(row_offset, column_index, context)
+}
+fn score_slot(score_buffer: &[f32], board_index: usize, context: &str) -> f32 {
+    let Some(&score) = score_buffer.get(board_index) else {
+        eprintln!("{context} 评分缓冲区索引越界: {board_index}");
+        panic!("{context} 评分缓冲区索引越界");
+    };
+    score
+}
+fn score_slot_mut<'buffer>(
+    score_buffer: &'buffer mut [f32],
+    board_index: usize,
+    context: &str,
+) -> &'buffer mut f32 {
+    let Some(score) = score_buffer.get_mut(board_index) else {
+        eprintln!("{context} 评分缓冲区索引越界: {board_index}");
+        panic!("{context} 评分缓冲区索引越界");
+    };
+    score
+}
 impl GomokuEvaluator {
     #[inline]
     #[must_use]
-    pub fn new(board_size: usize, config: EvaluationConfig) -> Self {
+    pub fn new(board_size: usize, config: EvaluationWeights) -> Self {
         let proximity_kernel = Self::init_proximity_kernel(config);
         let positional_bonus = Self::init_positional_bonus(board_size, config);
         Self {
@@ -12,30 +37,71 @@ impl GomokuEvaluator {
             positional_bonus,
         }
     }
-    fn init_proximity_kernel(config: EvaluationConfig) -> Vec<Vec<f32>> {
-        let k_size = config.proximity_kernel_size;
-        let k_center = k_size / 2;
-        let mut proximity_kernel = vec![vec![0.0_f32; k_size]; k_size];
-        for (r, row) in proximity_kernel.iter_mut().enumerate() {
-            for (c, cell) in row.iter_mut().enumerate() {
-                let dist = r.abs_diff(k_center) + c.abs_diff(k_center);
-                let dist_u16 = u16::try_from(dist).unwrap_or(u16::MAX);
-                *cell = 1.0 / (f32::from(dist_u16) + 1.0);
+    fn init_proximity_kernel(config: EvaluationWeights) -> Vec<Vec<f32>> {
+        let kernel_size = config.proximity_kernel_size;
+        if kernel_size == 0 {
+            eprintln!("GomokuEvaluator::init_proximity_kernel 核大小不能为 0");
+            panic!("GomokuEvaluator::init_proximity_kernel 核大小不能为 0");
+        }
+        let kernel_center =
+            checked::div_usize(kernel_size, 2_usize, "GomokuEvaluator::kernel_center");
+        let mut proximity_kernel = vec![vec![0.0_f32; kernel_size]; kernel_size];
+        for (row_index, kernel_row) in proximity_kernel.iter_mut().enumerate() {
+            for (column_index, kernel_value) in kernel_row.iter_mut().enumerate() {
+                let distance = checked::add_usize(
+                    row_index.abs_diff(kernel_center),
+                    column_index.abs_diff(kernel_center),
+                    "GomokuEvaluator::init_proximity_kernel::distance",
+                );
+                let distance_u16 = checked::usize_to_u16(
+                    distance,
+                    "GomokuEvaluator::init_proximity_kernel::distance_u16",
+                );
+                *kernel_value = 1.0_f32 / (f32::from(distance_u16) + 1.0_f32);
             }
         }
         proximity_kernel
     }
-    fn init_positional_bonus(board_size: usize, config: EvaluationConfig) -> Vec<f32> {
-        let center = board_size / 2;
-        let mut positional_bonus = vec![0.0_f32; board_size.saturating_mul(board_size)];
-        for r in 0..board_size {
-            for c in 0..board_size {
-                let row_bonus = center.saturating_sub(center.abs_diff(r));
-                let col_bonus = center.saturating_sub(center.abs_diff(c));
-                let bonus = row_bonus + col_bonus;
-                let bonus_u16 = u16::try_from(bonus).unwrap_or(u16::MAX);
-                let idx = r.saturating_mul(board_size).saturating_add(c);
-                positional_bonus[idx] = f32::from(bonus_u16) * config.positional_bonus_scale;
+    fn init_positional_bonus(board_size: usize, config: EvaluationWeights) -> Vec<f32> {
+        let center = checked::div_usize(
+            board_size,
+            2_usize,
+            "GomokuEvaluator::init_positional_bonus",
+        );
+        let mut positional_bonus =
+            vec![0.0_f32; board_area(board_size, "GomokuEvaluator::init_positional_bonus")];
+        for row_index in 0..board_size {
+            for column_index in 0..board_size {
+                let row_bonus = checked::sub_usize(
+                    center,
+                    center.abs_diff(row_index),
+                    "GomokuEvaluator::init_positional_bonus::row_bonus",
+                );
+                let column_bonus = checked::sub_usize(
+                    center,
+                    center.abs_diff(column_index),
+                    "GomokuEvaluator::init_positional_bonus::column_bonus",
+                );
+                let bonus = checked::add_usize(
+                    row_bonus,
+                    column_bonus,
+                    "GomokuEvaluator::init_positional_bonus::bonus",
+                );
+                let bonus_u16 = checked::usize_to_u16(
+                    bonus,
+                    "GomokuEvaluator::init_positional_bonus::bonus_u16",
+                );
+                let slot_index = score_index(
+                    board_size,
+                    row_index,
+                    column_index,
+                    "GomokuEvaluator::init_positional_bonus::slot_index",
+                );
+                *score_slot_mut(
+                    &mut positional_bonus,
+                    slot_index,
+                    "GomokuEvaluator::init_positional_bonus",
+                ) = f32::from(bonus_u16) * config.positional_bonus_scale;
             }
         }
         positional_bonus
@@ -48,10 +114,15 @@ impl GomokuEvaluator {
     ) {
         let board_size = position.board_size;
         let scale = self.config.proximity_scale;
-        for r in 0..board_size {
-            for c in 0..board_size {
-                if position.board[position.board_index(r, c)] == player {
-                    self.apply_proximity_kernel_scaled(board_size, (r, c), scale, score_buffer);
+        for row_index in 0..board_size {
+            for column_index in 0..board_size {
+                if position.cell(row_index, column_index) == player {
+                    self.apply_proximity_kernel_scaled(
+                        board_size,
+                        (row_index, column_index),
+                        scale,
+                        score_buffer,
+                    );
                 }
             }
         }
@@ -62,11 +133,19 @@ impl GomokuEvaluator {
         player: u8,
         target: &mut [f32],
     ) {
-        let needed_len = position.board_size.saturating_mul(position.board_size);
-        if target.len() != needed_len {
-            return;
+        let required_len = board_area(
+            position.board_size,
+            "GomokuEvaluator::rebuild_proximity_scores::required_len",
+        );
+        if target.len() != required_len {
+            eprintln!(
+                "GomokuEvaluator::rebuild_proximity_scores 缓冲区长度不匹配: 实际 {}, 期望 {}",
+                target.len(),
+                required_len
+            );
+            panic!("GomokuEvaluator::rebuild_proximity_scores 缓冲区长度不匹配");
         }
-        target.fill(0.0);
+        target.fill(0.0_f32);
         self.add_proximity_scores(position, player, target);
     }
     pub(crate) fn apply_proximity_delta(
@@ -76,9 +155,17 @@ impl GomokuEvaluator {
         delta: f32,
         target: &mut [f32],
     ) {
-        let needed_len = position.board_size.saturating_mul(position.board_size);
-        if target.len() != needed_len {
-            return;
+        let required_len = board_area(
+            position.board_size,
+            "GomokuEvaluator::apply_proximity_delta::required_len",
+        );
+        if target.len() != required_len {
+            eprintln!(
+                "GomokuEvaluator::apply_proximity_delta 缓冲区长度不匹配: 实际 {}, 期望 {}",
+                target.len(),
+                required_len
+            );
+            panic!("GomokuEvaluator::apply_proximity_delta 缓冲区长度不匹配");
         }
         let scale = self.config.proximity_scale * delta;
         self.apply_proximity_kernel_scaled(position.board_size, mov, scale, target);
@@ -90,53 +177,146 @@ impl GomokuEvaluator {
         scale: f32,
         target: &mut [f32],
     ) {
-        let (r, c) = mov;
-        let kernel_h = self.proximity_kernel.len();
-        let pad_h = kernel_h / 2;
-        let pad_w = self.proximity_kernel[0].len() / 2;
-        let r = isize::try_from(r).ok();
-        let c = isize::try_from(c).ok();
-        let pad_h = isize::try_from(pad_h).ok();
-        let pad_w = isize::try_from(pad_w).ok();
-        let board_limit = isize::try_from(board_size).ok();
-        let (Some(r), Some(c), Some(pad_h), Some(pad_w), Some(board_limit)) =
-            (r, c, pad_h, pad_w, board_limit)
-        else {
-            return;
+        let required_len = board_area(board_size, "GomokuEvaluator::apply_proximity_kernel_scaled");
+        if target.len() != required_len {
+            eprintln!(
+                "GomokuEvaluator::apply_proximity_kernel_scaled 缓冲区长度不匹配: 实际 {}, 期望 {}",
+                target.len(),
+                required_len
+            );
+            panic!("GomokuEvaluator::apply_proximity_kernel_scaled 缓冲区长度不匹配");
+        }
+        let (row_index, column_index) = mov;
+        let kernel_height = self.proximity_kernel.len();
+        let Some(first_kernel_row) = self.proximity_kernel.first() else {
+            eprintln!("GomokuEvaluator::apply_proximity_kernel_scaled 核数据为空");
+            panic!("GomokuEvaluator::apply_proximity_kernel_scaled 核数据为空");
         };
-        let Some(base_r) = r.checked_add(pad_h) else {
-            return;
-        };
-        let Some(base_c) = c.checked_add(pad_w) else {
-            return;
-        };
-        for (ki, kernel_row) in self.proximity_kernel.iter().enumerate() {
-            let Some(ki) = isize::try_from(ki).ok() else {
-                return;
-            };
-            let out_r = base_r - ki;
-            if out_r < 0 || out_r >= board_limit {
+        let kernel_width = first_kernel_row.len();
+        let row_padding = checked::div_usize(
+            kernel_height,
+            2_usize,
+            "GomokuEvaluator::apply_proximity_kernel_scaled::row_padding",
+        );
+        let column_padding = checked::div_usize(
+            kernel_width,
+            2_usize,
+            "GomokuEvaluator::apply_proximity_kernel_scaled::column_padding",
+        );
+        let base_row = checked::add_isize(
+            checked::usize_to_isize(
+                row_index,
+                "GomokuEvaluator::apply_proximity_kernel_scaled::row_index",
+            ),
+            checked::usize_to_isize(
+                row_padding,
+                "GomokuEvaluator::apply_proximity_kernel_scaled::row_padding_isize",
+            ),
+            "GomokuEvaluator::apply_proximity_kernel_scaled::base_row",
+        );
+        let base_column = checked::add_isize(
+            checked::usize_to_isize(
+                column_index,
+                "GomokuEvaluator::apply_proximity_kernel_scaled::column_index",
+            ),
+            checked::usize_to_isize(
+                column_padding,
+                "GomokuEvaluator::apply_proximity_kernel_scaled::column_padding_isize",
+            ),
+            "GomokuEvaluator::apply_proximity_kernel_scaled::base_column",
+        );
+        let board_limit = checked::usize_to_isize(
+            board_size,
+            "GomokuEvaluator::apply_proximity_kernel_scaled::board_limit",
+        );
+        for (kernel_row_index, kernel_row) in self.proximity_kernel.iter().enumerate() {
+            let row_offset = checked::usize_to_isize(
+                kernel_row_index,
+                "GomokuEvaluator::apply_proximity_kernel_scaled::row_offset",
+            );
+            let target_row = checked::sub_isize(
+                base_row,
+                row_offset,
+                "GomokuEvaluator::apply_proximity_kernel_scaled::target_row",
+            );
+            if target_row < 0 || target_row >= board_limit {
                 continue;
             }
-            let Ok(out_r) = usize::try_from(out_r) else {
-                continue;
-            };
-            let row_start = out_r.saturating_mul(board_size);
-            for (kj, &kernel_val) in kernel_row.iter().enumerate() {
-                let Some(kj) = isize::try_from(kj).ok() else {
-                    return;
-                };
-                let out_c = base_c - kj;
-                if out_c < 0 || out_c >= board_limit {
+            let target_row_index = checked::isize_to_usize(
+                target_row,
+                "GomokuEvaluator::apply_proximity_kernel_scaled::target_row_index",
+            );
+            let row_start = checked::mul_usize(
+                target_row_index,
+                board_size,
+                "GomokuEvaluator::apply_proximity_kernel_scaled::row_start",
+            );
+            for (kernel_column_index, &kernel_value) in kernel_row.iter().enumerate() {
+                let column_offset = checked::usize_to_isize(
+                    kernel_column_index,
+                    "GomokuEvaluator::apply_proximity_kernel_scaled::column_offset",
+                );
+                let target_column = checked::sub_isize(
+                    base_column,
+                    column_offset,
+                    "GomokuEvaluator::apply_proximity_kernel_scaled::target_column",
+                );
+                if target_column < 0 || target_column >= board_limit {
                     continue;
                 }
-                let Ok(out_c) = usize::try_from(out_c) else {
-                    continue;
-                };
-                let idx = row_start.saturating_add(out_c);
-                target[idx] += kernel_val * scale;
+                let target_column_index = checked::isize_to_usize(
+                    target_column,
+                    "GomokuEvaluator::apply_proximity_kernel_scaled::target_column_index",
+                );
+                let target_index = checked::add_usize(
+                    row_start,
+                    target_column_index,
+                    "GomokuEvaluator::apply_proximity_kernel_scaled::target_index",
+                );
+                let score = score_slot_mut(
+                    target,
+                    target_index,
+                    "GomokuEvaluator::apply_proximity_kernel_scaled",
+                );
+                *score = kernel_value.mul_add(scale, *score);
             }
         }
+    }
+    fn patterns_to_score(
+        position: &GomokuPosition,
+        evaluation: EvaluationWeights,
+    ) -> [(usize, usize, f32); 9] {
+        let win_minus_one = checked::sub_usize(
+            position.win_len,
+            1_usize,
+            "GomokuEvaluator::patterns_to_score::win_minus_one",
+        );
+        let win_minus_two = checked::sub_usize(
+            position.win_len,
+            2_usize,
+            "GomokuEvaluator::patterns_to_score::win_minus_two",
+        );
+        let win_minus_three = checked::sub_usize(
+            position.win_len,
+            3_usize,
+            "GomokuEvaluator::patterns_to_score::win_minus_three",
+        );
+        let win_minus_four = checked::sub_usize(
+            position.win_len,
+            4_usize,
+            "GomokuEvaluator::patterns_to_score::win_minus_four",
+        );
+        [
+            (win_minus_one, 0, evaluation.score_win),
+            (win_minus_two, 0, evaluation.score_live_four),
+            (win_minus_three, 0, evaluation.score_live_three),
+            (win_minus_four, 0, evaluation.score_live_two),
+            (win_minus_two, 1, evaluation.score_blocked_four),
+            (0, win_minus_one, evaluation.score_block_win),
+            (0, win_minus_two, evaluation.score_block_live_four),
+            (0, win_minus_three, evaluation.score_block_live_three),
+            (1, win_minus_two, evaluation.score_block_blocked_four),
+        ]
     }
     pub(crate) fn score_moves_into(
         &self,
@@ -170,50 +350,52 @@ impl GomokuEvaluator {
             return;
         }
         let board_size = position.board_size;
-        let needed_len = board_size.saturating_mul(board_size);
-        if score_buffer.len() != needed_len {
-            score_buffer.resize(needed_len, 0.0);
+        let required_len = board_area(
+            board_size,
+            "GomokuEvaluator::score_moves_into_with_proximity::required_len",
+        );
+        if score_buffer.len() != required_len {
+            score_buffer.resize(required_len, 0.0_f32);
         }
         score_buffer.copy_from_slice(&self.positional_bonus);
-        if proximity_scores.len() == needed_len {
-            for (score, proximity) in score_buffer.iter_mut().zip(proximity_scores.iter()) {
-                *score += *proximity;
+        if proximity_scores.len() == required_len {
+            for (score, proximity_score) in score_buffer.iter_mut().zip(proximity_scores.iter()) {
+                *score += *proximity_score;
             }
         } else {
             self.add_proximity_scores(position, player, score_buffer);
         }
-        let patterns_to_score = [
-            (position.win_len - 1, 0, evaluation.score_win),
-            (position.win_len - 2, 0, evaluation.score_live_four),
-            (position.win_len - 3, 0, evaluation.score_live_three),
-            (
-                position.win_len.saturating_sub(4),
-                0,
-                evaluation.score_live_two,
-            ),
-            (position.win_len - 2, 1, evaluation.score_blocked_four),
-            (0, position.win_len - 1, evaluation.score_block_win),
-            (0, position.win_len - 2, evaluation.score_block_live_four),
-            (0, position.win_len - 3, evaluation.score_block_live_three),
-            (1, position.win_len - 2, evaluation.score_block_blocked_four),
-        ];
-        for &(p_req, o_req, score) in &patterns_to_score {
-            let windows = position
-                .threat_index
-                .get_pattern_windows(player, p_req, o_req);
-            for window_idx in windows {
-                let window = &position.threat_index.all_windows[window_idx];
-                for &(r, c) in &window.coords {
-                    if position.board[position.board_index(r, c)] == 0 {
-                        let idx = r.saturating_mul(board_size).saturating_add(c);
-                        score_buffer[idx] += score;
+        for (player_count, opponent_count, pattern_score) in
+            Self::patterns_to_score(position, evaluation)
+        {
+            let windows =
+                position
+                    .threat_index
+                    .get_pattern_windows(player, player_count, opponent_count);
+            for window_index in windows {
+                let window = position.threat_index.window(window_index);
+                for &(row_index, column_index) in &window.coords {
+                    if position.cell(row_index, column_index) == 0 {
+                        let score_index = position.board_index(row_index, column_index);
+                        *score_slot_mut(
+                            score_buffer,
+                            score_index,
+                            "GomokuEvaluator::score_moves_into_with_proximity::pattern_score",
+                        ) += pattern_score;
                     }
                 }
             }
         }
-        scored_moves.extend(moves_to_score.iter().map(|&(r, c)| {
-            let idx = r.saturating_mul(board_size).saturating_add(c);
-            ((r, c), score_buffer[idx])
-        }));
+        for &(row_index, column_index) in moves_to_score {
+            let score_index = position.board_index(row_index, column_index);
+            scored_moves.push((
+                (row_index, column_index),
+                score_slot(
+                    score_buffer,
+                    score_index,
+                    "GomokuEvaluator::score_moves_into_with_proximity::scored_moves",
+                ),
+            ));
+        }
     }
 }
