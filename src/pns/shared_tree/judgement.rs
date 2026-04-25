@@ -46,7 +46,7 @@ impl SharedTree {
             node.set_win_len(0);
         } else if p2_wins {
             node.set_disproven();
-        } else if let Some(limit) = self.depth_limit
+        } else if let Some(limit) = self.depth_limit()
             && node.depth >= limit
         {
             self.stats.depth_cutoffs.fetch_add(1, Ordering::Relaxed);

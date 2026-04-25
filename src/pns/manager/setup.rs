@@ -1,4 +1,6 @@
-use super::super::{NodeTable, SharedTree, TranspositionTable, context::ThreadLocalContext};
+use super::super::{
+    NodeTable, SharedTree, TranspositionTable, WorkerPool, context::ThreadLocalContext,
+};
 use super::{ParallelSolver, SearchParams};
 use crate::{
     alloc_stats,
@@ -68,10 +70,11 @@ pub(super) fn with_tt_and_stop(
         existing_node_table,
     ));
     tree.evaluate_node(&tree.root, &ThreadLocalContext::new(game_state.clone(), 0));
+    let worker_pool = WorkerPool::new(Arc::clone(&tree), &game_state, params.num_threads);
     ParallelSolver {
         tree,
+        worker_pool,
         base_game_state: game_state,
-        num_threads: params.num_threads,
         board_size: params.board_size,
         win_len: params.win_len,
     }
@@ -93,10 +96,6 @@ pub(super) fn current_turn(solver: &ParallelSolver) -> usize {
             )
         })
 }
-pub(super) fn increase_depth_limit(solver: &mut ParallelSolver, new_limit: usize) {
-    if let Some(tree) = Arc::get_mut(&mut solver.tree) {
-        tree.increase_depth_limit(new_limit);
-    } else {
-        eprintln!("无法取得 SharedTree 的可变引用，跳过深度调整");
-    }
+pub(super) fn increase_depth_limit(solver: &ParallelSolver, new_limit: usize) {
+    solver.tree.increase_depth_limit(new_limit);
 }

@@ -1,10 +1,10 @@
-use super::super::{SharedTree, TreeStatsSnapshot};
+use super::super::{SharedTree, TreeStatsSnapshot, WorkerPool};
 use crate::{config::EvaluationWeights, game_state::GameState};
 use alloc::sync::Arc;
 pub struct ParallelSolver {
     pub(crate) tree: Arc<SharedTree>,
+    pub(crate) worker_pool: WorkerPool,
     pub(crate) base_game_state: GameState,
-    pub(crate) num_threads: usize,
     pub(crate) board_size: usize,
     pub(crate) win_len: usize,
 }

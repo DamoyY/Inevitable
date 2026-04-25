@@ -3,6 +3,7 @@ mod manager;
 mod node;
 mod shared_tree;
 mod stats_def;
+mod worker_pool;
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct TTEntry {
     pub pn: u64,
@@ -18,3 +19,4 @@ pub(crate) type TimingStats = stats_def::TimingStats;
 pub(crate) type TreeStatsAccumulator = stats_def::TreeStatsAccumulator;
 pub(crate) type TreeStatsAtomic = stats_def::TreeStatsAtomic;
 pub(crate) type TreeStatsSnapshot = stats_def::TreeStatsSnapshot;
+pub(crate) type WorkerPool = worker_pool::WorkerPool;

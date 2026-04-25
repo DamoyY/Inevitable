@@ -18,7 +18,7 @@ impl SharedTree {
         }
         let expand_start = Instant::now();
         let _alloc_guard = AllocTrackingGuard::new();
-        if let Some(limit) = self.depth_limit
+        if let Some(limit) = self.depth_limit()
             && node.depth >= limit
         {
             if !node.try_mark_depth_cutoff() {
@@ -60,7 +60,7 @@ impl SharedTree {
             );
             let child_depth = checked::add_usize(depth, 1_usize, "SharedTree::expand_node::depth");
             let node_key = (child_pos_hash, child_depth);
-            let is_depth_limited = self.depth_limit.is_some_and(|limit| child_depth >= limit);
+            let is_depth_limited = self.depth_limit().is_some_and(|limit| child_depth >= limit);
             let child = ctx.get_cached_node(&node_key).unwrap_or_else(|| {
                 local_stats.node_table_lookups = checked::add_u64(
                     local_stats.node_table_lookups,

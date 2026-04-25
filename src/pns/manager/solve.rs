@@ -1,10 +1,10 @@
-use super::super::{SharedTree, context::ThreadLocalContext, node::Worker};
+use super::super::context::ThreadLocalContext;
 use super::ParallelSolver;
 use crate::alloc_stats::AllocTrackingGuard;
 use crate::checked;
 use alloc::sync::Arc;
 use core::sync::atomic::{AtomicBool, Ordering};
-use std::{thread, time::Instant};
+use std::time::Instant;
 pub(super) fn solve(solver: &ParallelSolver, verbose: bool) -> bool {
     let start_time = Instant::now();
     let _alloc_guard = AllocTrackingGuard::new();
@@ -27,34 +27,12 @@ pub(super) fn solve(solver: &ParallelSolver, verbose: bool) -> bool {
         }
         return tree.root.get_pn() == 0;
     }
-    let handles = spawn_workers(solver, &tree);
-    wait_for_workers(handles);
+    solver.worker_pool.run_and_wait();
     let elapsed = start_time.elapsed().as_secs_f64();
     if verbose {
         super::logging::write_csv_log(&solver.tree, super::setup::current_turn(solver), elapsed);
     }
     solver.tree.root.get_pn() == 0
-}
-fn spawn_workers(solver: &ParallelSolver, tree: &Arc<SharedTree>) -> Vec<thread::JoinHandle<()>> {
-    (0..solver.num_threads)
-        .map(|thread_id| {
-            let cloned_tree = Arc::clone(tree);
-            let game_state = super::setup::clone_game_state(solver);
-            thread::spawn(move || {
-                let _alloc_guard = AllocTrackingGuard::new();
-                let ctx = ThreadLocalContext::new(game_state, thread_id);
-                let mut worker = Worker::new(cloned_tree, ctx);
-                worker.run();
-            })
-        })
-        .collect()
-}
-fn wait_for_workers(handles: Vec<thread::JoinHandle<()>>) {
-    for handle in handles {
-        if handle.join().is_err() {
-            eprintln!("工作线程异常退出。");
-        }
-    }
 }
 pub(super) fn run_iterative_deepening<R, H>(
     solver: &mut ParallelSolver,

@@ -52,7 +52,7 @@ impl ParallelSolver {
             existing_node_table,
         )
     }
-    pub fn increase_depth_limit(&mut self, new_limit: usize) {
+    pub fn increase_depth_limit(&self, new_limit: usize) {
         super::setup::increase_depth_limit(self, new_limit);
     }
     pub fn solve(&self, verbose: bool) -> bool {

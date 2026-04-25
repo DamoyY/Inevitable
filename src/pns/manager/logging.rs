@@ -96,7 +96,7 @@ fn capture_snapshot(tree: &SharedTree) -> LogSnapshot {
         stats: tree.stats_snapshot(),
         tt_size: tree.get_tt_size(),
         node_table_size: tree.get_node_table_size(),
-        depth_limit: tree.depth_limit,
+        depth_limit: tree.depth_limit(),
     }
 }
 #[derive(Clone, Copy)]

@@ -23,13 +23,13 @@ impl SharedTree {
         }
     }
     #[inline]
-    pub fn increase_depth_limit(&mut self, new_depth_limit: usize) {
-        if let Some(current_limit) = self.depth_limit
+    pub fn increase_depth_limit(&self, new_depth_limit: usize) {
+        if let Some(current_limit) = self.depth_limit()
             && new_depth_limit <= current_limit
         {
             return;
         }
-        self.depth_limit = Some(new_depth_limit);
+        self.set_depth_limit(Some(new_depth_limit));
         self.solved.store(false, Ordering::Release);
         let mut queue_visited = HashSet::new();
         let mut queue = VecDeque::new();

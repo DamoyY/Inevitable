@@ -8,13 +8,14 @@ use super::{
 use crate::checked;
 use crate::pns::TTEntry;
 use alloc::sync::Arc;
-use core::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use core::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 static NEXT_STATS_SESSION_ID: AtomicU64 = AtomicU64::new(1_u64);
+const NO_DEPTH_LIMIT: usize = usize::MAX;
 pub(crate) struct SharedTree {
     pub(crate) root: NodeRef,
     pub(crate) transposition_table: TranspositionTable,
     pub(crate) node_table: NodeTable,
-    pub(crate) depth_limit: Option<usize>,
+    depth_limit: AtomicUsize,
     pub(crate) solved: AtomicBool,
     pub(crate) stop_flag: Arc<AtomicBool>,
     pub(crate) stats: TreeStatsAtomic,
@@ -58,7 +59,7 @@ impl SharedTree {
             root,
             transposition_table,
             node_table,
-            depth_limit,
+            depth_limit: AtomicUsize::new(encode_depth_limit(depth_limit)),
             solved: AtomicBool::new(false),
             stop_flag,
             stats,
@@ -100,6 +101,16 @@ impl SharedTree {
         self.stats_session_id
     }
     #[inline]
+    #[must_use]
+    pub fn depth_limit(&self) -> Option<usize> {
+        decode_depth_limit(self.depth_limit.load(Ordering::Acquire))
+    }
+    #[inline]
+    pub fn set_depth_limit(&self, depth_limit: Option<usize>) {
+        self.depth_limit
+            .store(encode_depth_limit(depth_limit), Ordering::Release);
+    }
+    #[inline]
     pub fn get_tt(&self) -> TranspositionTable {
         Arc::clone(&self.transposition_table)
     }
@@ -128,5 +139,18 @@ impl SharedTree {
     pub fn store_tt(&self, hash: u64, player: u8, entry: TTEntry) {
         self.transposition_table.insert((hash, player), entry);
         self.stats.tt_stores.fetch_add(1, Ordering::Relaxed);
+    }
+}
+const fn encode_depth_limit(depth_limit: Option<usize>) -> usize {
+    match depth_limit {
+        Some(limit) => limit,
+        None => NO_DEPTH_LIMIT,
+    }
+}
+const fn decode_depth_limit(value: usize) -> Option<usize> {
+    if value == NO_DEPTH_LIMIT {
+        None
+    } else {
+        Some(value)
     }
 }
