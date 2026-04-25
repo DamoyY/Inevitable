@@ -3,7 +3,7 @@ use super::{
     GomokuRules, ThreatIndex,
 };
 use crate::{config::EvaluationConfig, utils::board_index};
-use rand::{Rng, SeedableRng, rngs::StdRng};
+use rand::{RngExt, SeedableRng, rngs::StdRng};
 use std::sync::Arc;
 pub struct ZobristHasher {
     pub(crate) board_size: usize,
