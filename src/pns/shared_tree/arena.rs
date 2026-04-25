@@ -5,9 +5,11 @@ use super::{
     },
     NodeTable, ShardedMap, TranspositionTable,
 };
+use crate::checked;
 use crate::pns::TTEntry;
 use alloc::sync::Arc;
-use core::sync::atomic::{AtomicBool, Ordering};
+use core::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+static NEXT_STATS_SESSION_ID: AtomicU64 = AtomicU64::new(1_u64);
 pub(crate) struct SharedTree {
     pub(crate) root: NodeRef,
     pub(crate) transposition_table: TranspositionTable,
@@ -16,6 +18,22 @@ pub(crate) struct SharedTree {
     pub(crate) solved: AtomicBool,
     pub(crate) stop_flag: Arc<AtomicBool>,
     pub(crate) stats: TreeStatsAtomic,
+    stats_session_id: u64,
+}
+fn next_stats_session_id() -> u64 {
+    loop {
+        let current = NEXT_STATS_SESSION_ID.load(Ordering::Relaxed);
+        let next = checked::add_u64(current, 1_u64, "SharedTree::next_stats_session_id");
+        match NEXT_STATS_SESSION_ID.compare_exchange_weak(
+            current,
+            next,
+            Ordering::Relaxed,
+            Ordering::Relaxed,
+        ) {
+            Ok(_) => return current,
+            Err(_) => core::hint::spin_loop(),
+        }
+    }
 }
 impl SharedTree {
     #[inline]
@@ -35,6 +53,7 @@ impl SharedTree {
         let transposition_table = existing_tt.unwrap_or_else(|| Arc::new(ShardedMap::new()));
         let stats = TreeStatsAtomic::new();
         stats.nodes_created.store(1, Ordering::Relaxed);
+        let stats_session_id = next_stats_session_id();
         Self {
             root,
             transposition_table,
@@ -43,6 +62,7 @@ impl SharedTree {
             solved: AtomicBool::new(false),
             stop_flag,
             stats,
+            stats_session_id,
         }
     }
     #[inline]
@@ -73,6 +93,11 @@ impl SharedTree {
     #[must_use]
     pub fn stats_snapshot(&self) -> TreeStatsSnapshot {
         self.stats.snapshot()
+    }
+    #[inline]
+    #[must_use]
+    pub const fn stats_session_id(&self) -> u64 {
+        self.stats_session_id
     }
     #[inline]
     pub fn get_tt(&self) -> TranspositionTable {

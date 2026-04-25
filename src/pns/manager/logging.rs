@@ -101,10 +101,15 @@ fn capture_snapshot(tree: &SharedTree) -> LogSnapshot {
 }
 #[derive(Clone, Copy)]
 struct LastLogState {
+    session_id: u64,
     stats: TreeStatsSnapshot,
     elapsed_secs: f64,
 }
-fn delta_since_last(stats: TreeStatsSnapshot, elapsed_secs: f64) -> (TreeStatsSnapshot, f64) {
+fn delta_since_last(
+    session_id: u64,
+    stats: TreeStatsSnapshot,
+    elapsed_secs: f64,
+) -> (TreeStatsSnapshot, f64) {
     let (delta_stats, delta_elapsed) = {
         let mut guard = match LAST_LOG_STATE.lock() {
             Ok(guard) => guard,
@@ -112,16 +117,18 @@ fn delta_since_last(stats: TreeStatsSnapshot, elapsed_secs: f64) -> (TreeStatsSn
         };
         let prev = *guard;
         *guard = Some(LastLogState {
+            session_id,
             stats,
             elapsed_secs,
         });
         drop(guard);
-        prev.map_or((stats, elapsed_secs), |last| {
-            (
+        match prev {
+            Some(last) if last.session_id == session_id => (
                 stats.delta_since(&last.stats),
                 (elapsed_secs - last.elapsed_secs).max(0.0_f64),
-            )
-        })
+            ),
+            _ => (stats, elapsed_secs),
+        }
     };
     (delta_stats, delta_elapsed)
 }
@@ -208,7 +215,8 @@ pub(super) fn write_csv_log(tree: &SharedTree, turn: usize, elapsed_secs: f64) {
         return;
     };
     let snapshot = capture_snapshot(tree);
-    let (delta_stats, delta_elapsed_secs) = delta_since_last(snapshot.stats, elapsed_secs);
+    let (delta_stats, delta_elapsed_secs) =
+        delta_since_last(tree.stats_session_id(), snapshot.stats, elapsed_secs);
     match write_log(
         &mut writer,
         turn,
