@@ -58,12 +58,12 @@ impl Bitboard {
     #[must_use]
     pub const fn coord_to_bit(&self, r: usize, c: usize) -> (usize, u64) {
         let (word_idx, bit_idx) = self.coord_to_index(r, c);
-        (word_idx, 1u64 << bit_idx)
+        (word_idx, 1_u64 << bit_idx)
     }
     #[inline]
     #[must_use]
     pub fn empty_mask(&self) -> SmallVec<[u64; 8]> {
-        smallvec ! [0u64 ; self . num_words]
+        smallvec ! [0_u64 ; self . num_words]
     }
     #[inline]
     pub fn set_in(&self, bits: &mut [u64], r: usize, c: usize) -> bool {
@@ -82,7 +82,7 @@ impl Bitboard {
     #[inline]
     pub fn set(&mut self, r: usize, c: usize, player: u8) {
         let (word_idx, bit_idx) = self.coord_to_index(r, c);
-        let bit = 1u64 << bit_idx;
+        let bit = 1_u64 << bit_idx;
         if player == 1 {
             self.black[word_idx] |= bit;
         } else if player == 2 {
@@ -92,7 +92,7 @@ impl Bitboard {
     #[inline]
     pub fn clear(&mut self, r: usize, c: usize) {
         let (word_idx, bit_idx) = self.coord_to_index(r, c);
-        let bit = 1u64 << bit_idx;
+        let bit = 1_u64 << bit_idx;
         self.black[word_idx] &= !bit;
         self.white[word_idx] &= !bit;
     }

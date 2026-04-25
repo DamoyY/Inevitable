@@ -271,7 +271,7 @@ impl ParallelSolver {
             .position
             .board
             .iter()
-            .fold(0usize, |count, &cell| count + usize::from(cell == 2))
+            .fold(0_usize, |count, &cell| count + usize::from(cell == 2))
     }
     #[inline]
     pub fn increase_depth_limit(&mut self, new_limit: usize) {

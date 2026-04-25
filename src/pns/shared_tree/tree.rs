@@ -214,11 +214,11 @@ impl SharedTree {
         }
         let is_or_node = node.is_or_node();
         let mut pn_min = u64::MAX;
-        let mut pn_sum = 0u64;
+        let mut pn_sum = 0_u64;
         let mut dn_min = u64::MAX;
-        let mut dn_sum = 0u64;
+        let mut dn_sum = 0_u64;
         let mut min_proven_win_len = u64::MAX;
-        let mut max_proven_win_len = 0u64;
+        let mut max_proven_win_len = 0_u64;
         let mut all_children_proven = true;
         for child in children {
             let cpn = child.node.get_pn();
@@ -239,7 +239,7 @@ impl SharedTree {
             node.set_pn(pn_min);
             node.set_dn(dn_sum);
             if min_proven_win_len < u64::MAX {
-                node.set_win_len(1u64.saturating_add(min_proven_win_len));
+                node.set_win_len(1_u64.saturating_add(min_proven_win_len));
             } else {
                 node.set_win_len(u64::MAX);
             }
@@ -249,7 +249,7 @@ impl SharedTree {
             if dn_min == 0 {
                 node.set_win_len(u64::MAX);
             } else if all_children_proven {
-                node.set_win_len(1u64.saturating_add(max_proven_win_len));
+                node.set_win_len(1_u64.saturating_add(max_proven_win_len));
             } else {
                 node.set_win_len(u64::MAX);
             }

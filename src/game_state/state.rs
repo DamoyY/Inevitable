@@ -20,15 +20,15 @@ impl ZobristHasher {
     #[must_use]
     pub fn with_seed(board_size: usize, seed: u64) -> Self {
         let mut rng = StdRng::seed_from_u64(seed);
-        let mut zobrist_table = vec![vec![[0u64; 3]; board_size]; board_size];
+        let mut zobrist_table = vec![vec![[0_u64; 3]; board_size]; board_size];
         for row in &mut zobrist_table {
             for cell in row.iter_mut() {
                 for piece in cell.iter_mut() {
-                    *piece = rng.random::<u64>() & ((1u64 << 63) - 1);
+                    *piece = rng.random::<u64>() & ((1_u64 << 63) - 1);
                 }
             }
         }
-        let side_to_move_hash = rng.random::<u64>() & ((1u64 << 63) - 1);
+        let side_to_move_hash = rng.random::<u64>() & ((1_u64 << 63) - 1);
         Self {
             board_size,
             zobrist_table,
@@ -100,7 +100,7 @@ impl GomokuPosition {
             board_size,
             win_len,
             hasher,
-            hash: 0u64,
+            hash: 0_u64,
             threat_index: ThreatIndex::new(board_size, win_len),
         };
         position.rebuild_hashes(current_player);
@@ -127,7 +127,7 @@ impl GomokuPosition {
     #[inline]
     #[must_use]
     pub fn get_canonical_hash(&self) -> u64 {
-        let mut hashes = [0u64; 8];
+        let mut hashes = [0_u64; 8];
         for r in 0..self.board_size {
             for c in 0..self.board_size {
                 let piece = self.board[self.board_index(r, c)];
@@ -146,8 +146,8 @@ impl GomokuPosition {
         } else if self.hash == (base_hash ^ side_hash) {
             true
         } else {
-            let mut count1 = 0usize;
-            let mut count2 = 0usize;
+            let mut count1 = 0_usize;
+            let mut count2 = 0_usize;
             for &cell in &self.board {
                 if cell == 1 {
                     count1 += 1;

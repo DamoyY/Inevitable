@@ -74,7 +74,7 @@ impl ThreadLocalContext {
             .position
             .board_size
             .saturating_mul(game_state.position.board_size);
-        let mut current_proximity_scores = vec![0.0f32; board_cells.saturating_mul(2)];
+        let mut current_proximity_scores = vec![0.0_f32; board_cells.saturating_mul(2)];
         let (player_one_scores, player_two_scores) =
             current_proximity_scores.split_at_mut(board_cells);
         game_state

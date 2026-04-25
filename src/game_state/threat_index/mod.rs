@@ -189,8 +189,8 @@ impl ThreatIndex {
         let span = board_size - win_len + 1;
         let lines = board_size.saturating_mul(span);
         let diags = span.saturating_mul(span);
-        2usize
+        2_usize
             .saturating_mul(lines)
-            .saturating_add(2usize.saturating_mul(diags))
+            .saturating_add(2_usize.saturating_mul(diags))
     }
 }

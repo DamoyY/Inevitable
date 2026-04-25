@@ -15,7 +15,7 @@ impl GomokuEvaluator {
     fn init_proximity_kernel(config: EvaluationConfig) -> Vec<Vec<f32>> {
         let k_size = config.proximity_kernel_size;
         let k_center = k_size / 2;
-        let mut proximity_kernel = vec![vec![0.0f32; k_size]; k_size];
+        let mut proximity_kernel = vec![vec![0.0_f32; k_size]; k_size];
         for (r, row) in proximity_kernel.iter_mut().enumerate() {
             for (c, cell) in row.iter_mut().enumerate() {
                 let dist = r.abs_diff(k_center) + c.abs_diff(k_center);
@@ -27,7 +27,7 @@ impl GomokuEvaluator {
     }
     fn init_positional_bonus(board_size: usize, config: EvaluationConfig) -> Vec<f32> {
         let center = board_size / 2;
-        let mut positional_bonus = vec![0.0f32; board_size.saturating_mul(board_size)];
+        let mut positional_bonus = vec![0.0_f32; board_size.saturating_mul(board_size)];
         for r in 0..board_size {
             for c in 0..board_size {
                 let row_bonus = center.saturating_sub(center.abs_diff(r));

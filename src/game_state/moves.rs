@@ -105,8 +105,8 @@ impl GomokuRules {
                 }
             }
         });
-        let mut candidate_insert_ns = 0u64;
-        let mut candidate_newly_added_ns = 0u64;
+        let mut candidate_insert_ns = 0_u64;
+        let mut candidate_newly_added_ns = 0_u64;
         for coord in neighbor_coords {
             let (word_idx, mask) = position.bitboard.coord_to_bit(coord.0, coord.1);
             let mut inserted = false;

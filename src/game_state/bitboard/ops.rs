@@ -7,7 +7,7 @@ impl Bitboard {
         if bits_in_last == 0 {
             u64::MAX
         } else {
-            (1u64 << bits_in_last) - 1
+            (1_u64 << bits_in_last) - 1
         }
     }
     fn shift_into(&self, bits: &[u64], target: &mut Vec<u64>, n: usize, left: bool) {

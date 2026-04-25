@@ -201,7 +201,7 @@ impl ParallelSolver {
         existing_tt: Option<TranspositionTable>,
         existing_node_table: Option<NodeTable>,
     ) -> (Option<(usize, usize)>, TranspositionTable, NodeTable) {
-        let depth = 1usize;
+        let depth = 1_usize;
         let mut solver = Self::with_tt_and_stop(
             initial_board,
             params,
