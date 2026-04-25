@@ -1,4 +1,4 @@
-use super::{Bitboard, WORD_BITS, bit_mask};
+use super::{Bitboard, WORD_BITS};
 use crate::{checked, game_state::Coord};
 impl Bitboard {
     #[inline]
@@ -8,14 +8,21 @@ impl Bitboard {
             .iter()
             .copied()
             .enumerate()
-            .flat_map(move |(word_index, word)| {
+            .flat_map(move |(word_index, mut word)| {
                 let base_bit =
                     checked::mul_usize(word_index, WORD_BITS, "Bitboard::iter_bits::base_bit");
-                (0_usize..WORD_BITS).filter_map(move |bit_index| {
-                    let mask = bit_mask(bit_index, "Bitboard::iter_bits::mask");
-                    if word & mask == 0 {
+                core::iter::from_fn(move || {
+                    if word == 0 {
                         return None;
                     }
+                    let bit_index = match usize::try_from(word.trailing_zeros()) {
+                        Ok(converted) => converted,
+                        Err(err) => {
+                            eprintln!("Bitboard::iter_bits 位索引转换失败: {err}");
+                            panic!("Bitboard::iter_bits 位索引转换失败");
+                        }
+                    };
+                    word &= checked::sub_u64(word, 1_u64, "Bitboard::iter_bits::clear_low_bit");
                     let global_bit =
                         checked::add_usize(base_bit, bit_index, "Bitboard::iter_bits::global_bit");
                     let row_index =

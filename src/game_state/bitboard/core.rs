@@ -83,10 +83,21 @@ impl Bitboard {
         }
     }
     #[inline]
-    pub(in crate::game_state) fn clear(&mut self, row_index: usize, column_index: usize) {
+    pub(in crate::game_state) fn clear_player(
+        &mut self,
+        row_index: usize,
+        column_index: usize,
+        player: u8,
+    ) {
         let (word_index, bit) = self.coord_to_bit(row_index, column_index);
-        *word_mut(&mut self.black, word_index, "Bitboard::clear::black") &= !bit;
-        *word_mut(&mut self.white, word_index, "Bitboard::clear::white") &= !bit;
+        match player {
+            1 => *word_mut(&mut self.black, word_index, "Bitboard::clear_player::black") &= !bit,
+            2 => *word_mut(&mut self.white, word_index, "Bitboard::clear_player::white") &= !bit,
+            _ => {
+                eprintln!("Bitboard::clear_player 收到非法玩家编号: {player}");
+                panic!("Bitboard::clear_player 收到非法玩家编号");
+            }
+        }
     }
     #[inline]
     pub(in crate::game_state) fn occupied_into(&self, target: &mut Vec<u64>) {

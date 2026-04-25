@@ -60,7 +60,7 @@ impl ThreatIndex {
         };
         window
     }
-    fn window_indices_for_point(
+    pub(crate) fn window_indices_for_point(
         &self,
         row_index: usize,
         column_index: usize,
@@ -235,7 +235,7 @@ impl ThreatIndex {
     }
     fn update_bucket_add(&mut self, window_index: usize) {
         let window = self.window(window_index);
-        if window.p1_count > 0 && window.p2_count > 0 {
+        if !Self::is_bucketed(window) {
             return;
         }
         let keys = Self::window_bucket_keys(window);
@@ -246,13 +246,43 @@ impl ThreatIndex {
     }
     fn update_bucket_remove(&mut self, window_index: usize) {
         let window = self.window(window_index);
+        if !Self::is_bucketed(window) {
+            return;
+        }
         let keys = Self::window_bucket_keys(window);
         self.pattern_buckets.remove(keys[0].0, window_index);
         self.pattern_buckets.remove(keys[1].0, window_index);
     }
+    const fn is_bucketed(window: &Window) -> bool {
+        !(window.p1_count > 0 && window.p2_count > 0)
+    }
     fn apply_window_update(&mut self, mov: (usize, usize), player: u8, is_move: bool) {
-        let window_indices = self.window_indices_for_point(mov.0, mov.1).clone();
-        for window_index_u16 in window_indices {
+        let point_index = board_index(self.board_size, mov.0, mov.1);
+        let window_count = {
+            let Some(window_indices) = self.point_to_windows_map.get(point_index) else {
+                eprintln!(
+                    "ThreatIndex::apply_window_update 点索引越界: ({}, {})",
+                    mov.0, mov.1
+                );
+                panic!("ThreatIndex::apply_window_update 点索引越界");
+            };
+            window_indices.len()
+        };
+        for offset in 0..window_count {
+            let window_index_u16 = {
+                let Some(window_indices) = self.point_to_windows_map.get(point_index) else {
+                    eprintln!(
+                        "ThreatIndex::apply_window_update 点索引越界: ({}, {})",
+                        mov.0, mov.1
+                    );
+                    panic!("ThreatIndex::apply_window_update 点索引越界");
+                };
+                let Some(&window_index_u16) = window_indices.get(offset) else {
+                    eprintln!("ThreatIndex::apply_window_update 窗口列表索引越界: {offset}");
+                    panic!("ThreatIndex::apply_window_update 窗口列表索引越界");
+                };
+                window_index_u16
+            };
             let window_index = usize::from(window_index_u16);
             self.update_bucket_remove(window_index);
             let window = self.window_mut(window_index);

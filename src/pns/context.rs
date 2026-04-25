@@ -1,6 +1,9 @@
 use super::node::NodeRef;
-use crate::game_state::{
-    BitboardWorkspace, GameState, GomokuRules, MoveApplyTiming, MoveGenBuffers, MoveGenTiming,
+use crate::{
+    checked,
+    game_state::{
+        BitboardWorkspace, GameState, GomokuRules, MoveApplyTiming, MoveGenBuffers, MoveGenTiming,
+    },
 };
 use alloc::collections::VecDeque;
 use hashbrown::HashMap;
@@ -59,7 +62,6 @@ pub struct ThreadLocalContext {
     pub(crate) game_state: GameState,
     pub(crate) path_stack: Vec<PathEntry>,
     pub(crate) bitboard_workspace: BitboardWorkspace,
-    pub(crate) score_buffer: Vec<f32>,
     pub(crate) current_proximity_scores: Vec<f32>,
     pub(crate) legal_moves: Vec<(usize, usize)>,
     pub(crate) scored_moves: Vec<((usize, usize), f32)>,
@@ -69,11 +71,8 @@ pub struct ThreadLocalContext {
 impl ThreadLocalContext {
     pub fn new(game_state: GameState, _thread_id: usize) -> Self {
         let num_words = game_state.position.bitboard.num_words();
-        let board_cells = game_state
-            .position
-            .board_size
-            .saturating_mul(game_state.position.board_size);
-        let mut current_proximity_scores = vec![0.0_f32; board_cells.saturating_mul(2)];
+        let board_cells = board_cells(game_state.position.board_size);
+        let mut current_proximity_scores = vec![0.0_f32; double_board_cells(board_cells)];
         let (player_one_scores, player_two_scores) =
             current_proximity_scores.split_at_mut(board_cells);
         game_state
@@ -86,7 +85,6 @@ impl ThreadLocalContext {
             game_state,
             path_stack: Vec::with_capacity(256),
             bitboard_workspace: BitboardWorkspace::new(num_words),
-            score_buffer: vec![0.0; board_cells],
             current_proximity_scores,
             legal_moves: Vec::with_capacity(256),
             scored_moves: Vec::with_capacity(256),
@@ -119,6 +117,7 @@ impl ThreadLocalContext {
             &mut self.game_state.position,
             &mut self.game_state.move_cache,
             mov,
+            player,
         );
     }
     pub fn push_path(
@@ -153,18 +152,14 @@ impl ThreadLocalContext {
         self.game_state.position.get_hash()
     }
     pub fn refresh_legal_moves(&mut self, player: u8) -> MoveGenTiming {
-        let board_cells = self
-            .game_state
-            .position
-            .board_size
-            .saturating_mul(self.game_state.position.board_size);
+        let board_cells = board_cells(self.game_state.position.board_size);
         let proximity_scores =
             proximity_scores_for_player(&self.current_proximity_scores, board_cells, player);
         let mut buffers = MoveGenBuffers {
-            score_buffer: &mut self.score_buffer,
             forcing_bits: &mut self.forcing_bits,
             scored_moves: &mut self.scored_moves,
             out_moves: &mut self.legal_moves,
+            candidate_moves: Some(&self.game_state.move_cache.candidate_moves),
             proximity_scores: Some(proximity_scores),
         };
         GomokuRules::get_legal_moves_into(
@@ -182,38 +177,81 @@ impl ThreadLocalContext {
         self.node_cache.insert(key, node);
     }
     fn update_proximity_scores(&mut self, mov: (usize, usize), player: u8, delta: f32) {
-        let board_cells = self
-            .game_state
-            .position
-            .board_size
-            .saturating_mul(self.game_state.position.board_size);
+        let board_cells = board_cells(self.game_state.position.board_size);
         let game_state = &self.game_state;
-        if let Some(scores) =
-            proximity_scores_for_player_mut(&mut self.current_proximity_scores, board_cells, player)
-        {
-            game_state
-                .evaluator
-                .apply_proximity_delta(&game_state.position, mov, delta, scores);
-        }
+        let scores = proximity_scores_for_player_mut(
+            &mut self.current_proximity_scores,
+            board_cells,
+            player,
+        );
+        game_state
+            .evaluator
+            .apply_proximity_delta(&game_state.position, mov, delta, scores);
     }
 }
 fn proximity_scores_for_player(scores: &[f32], board_cells: usize, player: u8) -> &[f32] {
-    let total_cells = board_cells.saturating_mul(2);
+    let total_cells = double_board_cells(board_cells);
     match player {
-        1 => scores.get(0..board_cells).unwrap_or(&[]),
-        2 => scores.get(board_cells..total_cells).unwrap_or(&[]),
-        _ => &[],
+        1 => {
+            let Some(player_scores) = scores.get(0..board_cells) else {
+                eprintln!("ThreadLocalContext::proximity_scores_for_player 一号玩家评分范围越界");
+                panic!("ThreadLocalContext::proximity_scores_for_player 一号玩家评分范围越界");
+            };
+            player_scores
+        }
+        2 => {
+            let Some(player_scores) = scores.get(board_cells..total_cells) else {
+                eprintln!("ThreadLocalContext::proximity_scores_for_player 二号玩家评分范围越界");
+                panic!("ThreadLocalContext::proximity_scores_for_player 二号玩家评分范围越界");
+            };
+            player_scores
+        }
+        _ => {
+            eprintln!("ThreadLocalContext::proximity_scores_for_player 收到非法玩家编号: {player}");
+            panic!("ThreadLocalContext::proximity_scores_for_player 收到非法玩家编号");
+        }
     }
 }
 fn proximity_scores_for_player_mut(
     scores: &mut [f32],
     board_cells: usize,
     player: u8,
-) -> Option<&mut [f32]> {
-    let total_cells = board_cells.saturating_mul(2);
+) -> &mut [f32] {
+    let total_cells = double_board_cells(board_cells);
     match player {
-        1 => scores.get_mut(0..board_cells),
-        2 => scores.get_mut(board_cells..total_cells),
-        _ => None,
+        1 => {
+            let Some(player_scores) = scores.get_mut(0..board_cells) else {
+                eprintln!(
+                    "ThreadLocalContext::proximity_scores_for_player_mut 一号玩家评分范围越界"
+                );
+                panic!("ThreadLocalContext::proximity_scores_for_player_mut 一号玩家评分范围越界");
+            };
+            player_scores
+        }
+        2 => {
+            let Some(player_scores) = scores.get_mut(board_cells..total_cells) else {
+                eprintln!(
+                    "ThreadLocalContext::proximity_scores_for_player_mut 二号玩家评分范围越界"
+                );
+                panic!("ThreadLocalContext::proximity_scores_for_player_mut 二号玩家评分范围越界");
+            };
+            player_scores
+        }
+        _ => {
+            eprintln!(
+                "ThreadLocalContext::proximity_scores_for_player_mut 收到非法玩家编号: {player}"
+            );
+            panic!("ThreadLocalContext::proximity_scores_for_player_mut 收到非法玩家编号");
+        }
     }
+}
+fn board_cells(board_size: usize) -> usize {
+    checked::mul_usize(board_size, board_size, "ThreadLocalContext::board_cells")
+}
+fn double_board_cells(board_cells: usize) -> usize {
+    checked::mul_usize(
+        board_cells,
+        2_usize,
+        "ThreadLocalContext::double_board_cells",
+    )
 }

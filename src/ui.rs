@@ -1,16 +1,29 @@
 use crate::{
+    checked,
     config::Config,
-    game_state::{GameState, GomokuRules, ZobristHasher},
+    game_state::{Coord, GameState, GomokuRules, ZobristHasher},
     pns::{NodeTable, ParallelSolver, SearchParams, TranspositionTable},
     utils::board_index,
 };
 use alloc::sync::Arc;
 use core::sync::atomic::{AtomicBool, Ordering};
 mod input;
-use input::read_player_move;
+use input::{PlayerInput, read_player_input};
+const PROGRAM_PLAYER: u8 = 1;
+const HUMAN_PLAYER: u8 = 2;
 const BENCHMARK_BOARD_7X7: [&str; 7] = [
     ".......", ".......", "..O....", "...X...", ".......", ".......", ".......",
 ];
+#[derive(Clone, Copy)]
+struct PlayedMove {
+    coord: Coord,
+    player: u8,
+}
+enum PlayerTurnResult {
+    MoveApplied,
+    TakeBack,
+    Finished,
+}
 #[inline]
 pub fn print_board(board: &[u8], board_size: usize) {
     print!("  ");
@@ -26,8 +39,8 @@ pub fn print_board(board: &[u8], board_size: usize) {
                 return;
             };
             let cell_text = match *cell {
-                1 => "X",
-                2 => "O",
+                PROGRAM_PLAYER => "X",
+                HUMAN_PLAYER => "O",
                 _ => ".",
             };
             print!("{cell_text}  ");
@@ -57,13 +70,13 @@ pub fn run_benchmark(exit_flag: &Arc<AtomicBool>, config: &Config) {
         config.board_size,
         config.win_len,
         config.evaluation,
-        1,
+        PROGRAM_PLAYER,
     ) || check_win(
         &board,
         config.board_size,
         config.win_len,
         config.evaluation,
-        2,
+        HUMAN_PLAYER,
     ) {
         eprintln!("基准残局已出现胜负，无法用于基准测试。");
         return;
@@ -119,7 +132,8 @@ pub fn play_game(exit_flag: &Arc<AtomicBool>, config: &Config) {
     print_intro(config);
     let board_size = config.board_size;
     let mut board = vec![0_u8; board_size.saturating_mul(board_size)];
-    let mut current_player = 1_u8;
+    let mut current_player = PROGRAM_PLAYER;
+    let mut move_history = Vec::new();
     let mut tt: Option<TranspositionTable> = None;
     let mut node_table: NodeTable = NodeTable::default();
     loop {
@@ -131,7 +145,7 @@ pub fn play_game(exit_flag: &Arc<AtomicBool>, config: &Config) {
             println!("\n当前棋盘:");
             print_board(&board, board_size);
         }
-        if current_player == 1 {
+        if current_player == PROGRAM_PLAYER {
             if ai_turn(
                 &mut board,
                 config,
@@ -139,18 +153,33 @@ pub fn play_game(exit_flag: &Arc<AtomicBool>, config: &Config) {
                 &mut tt,
                 &mut node_table,
                 exit_flag,
+                &mut move_history,
             ) {
                 break;
             }
             if exit_flag.load(Ordering::SeqCst) {
                 return;
             }
-            current_player = 2;
+            current_player = HUMAN_PLAYER;
         } else {
-            if player_turn(&mut board, board_size, exit_flag.as_ref()) {
-                return;
+            match player_turn(
+                &mut board,
+                board_size,
+                exit_flag.as_ref(),
+                &mut move_history,
+            ) {
+                PlayerTurnResult::MoveApplied => {
+                    current_player = PROGRAM_PLAYER;
+                }
+                PlayerTurnResult::TakeBack => {
+                    if take_back_last_player_move(&mut board, board_size, &mut move_history) {
+                        tt = None;
+                        node_table.clear();
+                    }
+                    current_player = HUMAN_PLAYER;
+                }
+                PlayerTurnResult::Finished => return,
             }
-            current_player = 1;
         }
     }
 }
@@ -173,6 +202,7 @@ fn ai_turn(
     tt: &mut Option<TranspositionTable>,
     node_table: &mut NodeTable,
     exit_flag: &Arc<AtomicBool>,
+    move_history: &mut Vec<PlayedMove>,
 ) -> bool {
     if exit_flag.load(Ordering::SeqCst) {
         return true;
@@ -226,8 +256,18 @@ fn ai_turn(
         );
         return true;
     };
-    *cell = 1;
-    if check_win(board, board_size, win_len, config.evaluation, 1) {
+    *cell = PROGRAM_PLAYER;
+    move_history.push(PlayedMove {
+        coord: selected_move,
+        player: PROGRAM_PLAYER,
+    });
+    if check_win(
+        board,
+        board_size,
+        win_len,
+        config.evaluation,
+        PROGRAM_PLAYER,
+    ) {
         println!("\n最终棋盘:");
         print_board(board, board_size);
         println!("程序获胜");
@@ -235,10 +275,18 @@ fn ai_turn(
     }
     false
 }
-fn player_turn(board: &mut [u8], board_size: usize, exit_flag: &AtomicBool) -> bool {
+fn player_turn(
+    board: &mut [u8],
+    board_size: usize,
+    exit_flag: &AtomicBool,
+    move_history: &mut Vec<PlayedMove>,
+) -> PlayerTurnResult {
     println!("\n轮到您 (O) 落子。");
-    let Some(player_move) = read_player_move(board, board_size, exit_flag) else {
-        return true;
+    let Some(player_input) = read_player_input(board, board_size, exit_flag) else {
+        return PlayerTurnResult::Finished;
+    };
+    let PlayerInput::Move(player_move) = player_input else {
+        return PlayerTurnResult::TakeBack;
     };
     let move_index = board_index(board_size, player_move.0, player_move.1);
     let Some(cell) = board.get_mut(move_index) else {
@@ -247,10 +295,86 @@ fn player_turn(board: &mut [u8], board_size: usize, exit_flag: &AtomicBool) -> b
             row = player_move.0,
             column = player_move.1
         );
-        return true;
+        return PlayerTurnResult::Finished;
     };
-    *cell = 2;
-    false
+    *cell = HUMAN_PLAYER;
+    move_history.push(PlayedMove {
+        coord: player_move,
+        player: HUMAN_PLAYER,
+    });
+    PlayerTurnResult::MoveApplied
+}
+fn take_back_last_player_move(
+    board: &mut [u8],
+    board_size: usize,
+    move_history: &mut Vec<PlayedMove>,
+) -> bool {
+    if move_history.is_empty() {
+        println!("当前没有可悔棋步。");
+        return false;
+    }
+    if move_history.len() < 2 {
+        println!("您尚未落子，无法悔棋。");
+        return false;
+    }
+    let ai_move_index = checked::sub_usize(
+        move_history.len(),
+        1_usize,
+        "take_back_last_player_move::ai_move_index",
+    );
+    let player_move_index = checked::sub_usize(
+        move_history.len(),
+        2_usize,
+        "take_back_last_player_move::player_move_index",
+    );
+    let Some(&ai_move) = move_history.get(ai_move_index) else {
+        eprintln!("悔棋状态异常：找不到程序上一手落子。");
+        return false;
+    };
+    let Some(&player_move) = move_history.get(player_move_index) else {
+        eprintln!("悔棋状态异常：找不到玩家上一手落子。");
+        return false;
+    };
+    if ai_move.player != PROGRAM_PLAYER {
+        eprintln!("悔棋状态异常：上一手不是程序落子。");
+        return false;
+    }
+    if player_move.player != HUMAN_PLAYER {
+        eprintln!("悔棋状态异常：找不到上一手玩家落子。");
+        return false;
+    }
+    if !recorded_move_matches(board, board_size, ai_move)
+        || !recorded_move_matches(board, board_size, player_move)
+    {
+        return false;
+    }
+    clear_recorded_move(board, board_size, ai_move);
+    clear_recorded_move(board, board_size, player_move);
+    move_history.truncate(player_move_index);
+    println!("已悔棋，回到您上一手落子前。");
+    true
+}
+fn recorded_move_matches(board: &[u8], board_size: usize, played_move: PlayedMove) -> bool {
+    let (row, column) = played_move.coord;
+    let move_index = board_index(board_size, row, column);
+    let Some(&cell) = board.get(move_index) else {
+        eprintln!("悔棋位置超出棋盘数据范围: ({row}, {column})。");
+        return false;
+    };
+    if cell != played_move.player {
+        eprintln!("悔棋状态异常：位置 ({row}, {column}) 的棋子与历史记录不一致。");
+        return false;
+    }
+    true
+}
+fn clear_recorded_move(board: &mut [u8], board_size: usize, played_move: PlayedMove) {
+    let (row, column) = played_move.coord;
+    let move_index = board_index(board_size, row, column);
+    let Some(cell) = board.get_mut(move_index) else {
+        eprintln!("悔棋位置超出棋盘数据范围: ({row}, {column})。");
+        panic!("悔棋位置超出棋盘数据范围");
+    };
+    *cell = 0;
 }
 fn check_win(
     board: &[u8],
@@ -260,6 +384,13 @@ fn check_win(
     player: u8,
 ) -> bool {
     let hasher = Arc::new(ZobristHasher::new(board_size));
-    let game_state = GameState::new(board.to_vec(), board_size, hasher, 1, win_len, evaluation);
+    let game_state = GameState::new(
+        board.to_vec(),
+        board_size,
+        hasher,
+        PROGRAM_PLAYER,
+        win_len,
+        evaluation,
+    );
     GomokuRules::check_win(&game_state.position, player)
 }

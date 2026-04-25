@@ -136,42 +136,6 @@ pub(crate) fn usize_to_u16(value: usize, context: &str) -> u16 {
     }
 }
 #[must_use]
-pub(crate) fn usize_to_isize(value: usize, context: &str) -> isize {
-    match isize::try_from(value) {
-        Ok(converted) => converted,
-        Err(err) => {
-            eprintln!("{context} 从 usize 转换为 isize 失败: {value}, 错误: {err}");
-            panic!("{context} 从 usize 转换为 isize 失败");
-        }
-    }
-}
-#[must_use]
-pub(crate) fn isize_to_usize(value: isize, context: &str) -> usize {
-    match usize::try_from(value) {
-        Ok(converted) => converted,
-        Err(err) => {
-            eprintln!("{context} 从 isize 转换为 usize 失败: {value}, 错误: {err}");
-            panic!("{context} 从 isize 转换为 usize 失败");
-        }
-    }
-}
-#[must_use]
-pub(crate) fn add_isize(left: isize, right: isize, context: &str) -> isize {
-    let Some(value) = left.checked_add(right) else {
-        eprintln!("{context} 发生 isize 加法溢出: {left} + {right}");
-        panic!("{context} 发生 isize 加法溢出");
-    };
-    value
-}
-#[must_use]
-pub(crate) fn sub_isize(left: isize, right: isize, context: &str) -> isize {
-    let Some(value) = left.checked_sub(right) else {
-        eprintln!("{context} 发生 isize 减法下溢: {left} - {right}");
-        panic!("{context} 发生 isize 减法下溢");
-    };
-    value
-}
-#[must_use]
 pub(crate) fn shl_u64(value: u64, shift_amount: usize, context: &str) -> u64 {
     let shift = usize_to_u32(shift_amount, context);
     let Some(shifted) = value.checked_shl(shift) else {

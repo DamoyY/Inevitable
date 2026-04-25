@@ -14,7 +14,7 @@ pub type BitboardWorkspace = bitboard::BitboardWorkspace;
 pub type ZobristHasher = state::ZobristHasher;
 pub type ThreatIndex = threat_index::ThreatIndex;
 pub type Coord = (usize, usize);
-pub type MoveHistory = Vec<(Coord, SmallVec<[u64; 8]>)>;
+pub type MoveHistory = Vec<(Coord, SmallVec<[Coord; 8]>)>;
 pub type ForcingMoves = (Vec<Coord>, Vec<Coord>);
 macro_rules ! define_move_apply_timing { ($ ($ field : ident => $ stat_field : ident) ,* $ (,) ?) => { pub struct MoveApplyTiming { $ (pub $ field : u64 ,) * } impl MoveApplyTiming { # [inline] # [must_use] pub const fn zero () -> Self { Self { $ ($ field : 0 ,) * } } } } ; }
 crate::for_each_move_apply_timing!(define_move_apply_timing);
@@ -24,10 +24,10 @@ pub struct MoveGenTiming {
     pub scoring_ns: u64,
 }
 pub struct MoveGenBuffers<'buffers> {
-    pub score_buffer: &'buffers mut Vec<f32>,
     pub forcing_bits: &'buffers mut Vec<u64>,
     pub scored_moves: &'buffers mut Vec<(Coord, f32)>,
     pub out_moves: &'buffers mut Vec<Coord>,
+    pub candidate_moves: Option<&'buffers [u64]>,
     pub proximity_scores: Option<&'buffers [f32]>,
 }
 fn record_duration_ns<F: FnOnce()>(field: &mut u64, operation: F) {
@@ -58,7 +58,7 @@ pub struct GomokuPosition {
 #[derive(Clone)]
 pub struct GomokuEvaluator {
     pub(crate) config: EvaluationWeights,
-    pub(crate) proximity_kernel: Vec<Vec<f32>>,
+    pub(crate) proximity_kernel: Vec<(usize, usize, f32)>,
     pub(crate) positional_bonus: Vec<f32>,
 }
 #[derive(Clone)]

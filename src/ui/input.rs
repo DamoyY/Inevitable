@@ -4,22 +4,26 @@ use core::{
     time::Duration,
 };
 use std::{io, sync::mpsc, thread};
-pub(super) fn read_player_move(
+pub(super) enum PlayerInput {
+    Move((usize, usize)),
+    TakeBack,
+}
+pub(super) fn read_player_input(
     board: &[u8],
     board_size: usize,
     exit_flag: &AtomicBool,
-) -> Option<(usize, usize)> {
+) -> Option<PlayerInput> {
     loop {
         if exit_flag.load(Ordering::SeqCst) {
             return None;
         }
-        print!("请输入您的落子位置 (行 列)，例如 '3 4': ");
+        print!("请输入您的落子位置 (行 列)，例如 '3 4'；输入 'tb' 悔棋: ");
         let mut stdout = io::stdout();
         if let Err(err) = io::Write::flush(&mut stdout) {
             eprintln!("刷新标准输出失败: {err}");
             return None;
         }
-        let input = match read_line_with_exit(exit_flag) {
+        let raw_input = match read_line_with_exit(exit_flag) {
             Ok(line) => line,
             Err(InputError::Exit) => return None,
             Err(InputError::Io) => {
@@ -27,17 +31,21 @@ pub(super) fn read_player_move(
                 continue;
             }
         };
-        let mut parts = input.split_whitespace();
+        let trimmed_input = raw_input.trim();
+        if trimmed_input.eq_ignore_ascii_case("tb") {
+            return Some(PlayerInput::TakeBack);
+        }
+        let mut parts = trimmed_input.split_whitespace();
         let Some(row_text) = parts.next() else {
-            println!("输入格式错误，请输入两个数字。");
+            println!("输入格式错误，请输入两个数字或 'tb'。");
             continue;
         };
         let Some(column_text) = parts.next() else {
-            println!("输入格式错误，请输入两个数字。");
+            println!("输入格式错误，请输入两个数字或 'tb'。");
             continue;
         };
         if parts.next().is_some() {
-            println!("输入格式错误，请输入两个数字。");
+            println!("输入格式错误，请输入两个数字或 'tb'。");
             continue;
         }
         let row = row_text.parse::<usize>();
@@ -57,7 +65,7 @@ pub(super) fn read_player_move(
                     println!("该位置已有棋子。");
                     continue;
                 }
-                return Some((row_index, column_index));
+                return Some(PlayerInput::Move((row_index, column_index)));
             }
             _ => {
                 println!("输入无效。");
