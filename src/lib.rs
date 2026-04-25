@@ -1,14 +1,17 @@
+extern crate alloc;
 #[macro_export]
 macro_rules ! for_each_move_apply_timing { ($ macro : ident) => { $ macro ! { board_update_ns => board_update_time_ns , bitboard_update_ns => bitboard_update_time_ns , threat_index_update_ns => threat_index_update_time_ns , candidate_remove_ns => candidate_remove_time_ns , candidate_neighbor_ns => candidate_neighbor_time_ns , candidate_insert_ns => candidate_insert_time_ns , candidate_newly_added_ns => candidate_newly_added_time_ns , candidate_history_ns => candidate_history_time_ns , hash_update_ns => hash_update_time_ns , } } ; }
+mod checked;
 pub mod alloc_stats {
     use crate::utils::duration_to_ns;
-    use mimalloc::MiMalloc;
-    use std::{
+    use core::{
         alloc::{GlobalAlloc, Layout},
         cell::Cell,
         sync::atomic::{AtomicU64, Ordering},
-        time::{Duration, Instant},
+        time::Duration,
     };
+    use mimalloc::MiMalloc;
+    use std::time::Instant;
     static ALLOC_TIME_NS: AtomicU64 = AtomicU64::new(0);
     static DEALLOC_TIME_NS: AtomicU64 = AtomicU64::new(0);
     static REALLOC_TIME_NS: AtomicU64 = AtomicU64::new(0);
@@ -188,16 +191,29 @@ pub mod game_state;
 pub mod pns;
 pub mod ui;
 pub mod utils {
+    use crate::checked;
     use core::time::Duration;
     #[inline]
     #[must_use]
-    pub const fn board_index(board_size: usize, r: usize, c: usize) -> usize {
-        r * board_size + c
+    pub fn board_index(board_size: usize, row_index: usize, column_index: usize) -> usize {
+        let row_offset =
+            checked::mul_usize(row_index, board_size, "utils::board_index::row_offset");
+        checked::add_usize(row_offset, column_index, "utils::board_index")
     }
     #[inline]
     #[must_use]
-    pub fn duration_to_ns(duration: Duration) -> u64 {
-        u64::try_from(duration.as_nanos()).unwrap_or(u64::MAX)
+    pub(crate) fn duration_to_ns(duration: Duration) -> u64 {
+        match u64::try_from(duration.as_nanos()) {
+            Ok(value) => value,
+            Err(err) => {
+                eprintln!(
+                    "Duration 转换为纳秒失败: secs={}, subsec_nanos={}, 错误: {err}",
+                    duration.as_secs(),
+                    duration.subsec_nanos()
+                );
+                panic!("Duration 转换为纳秒失败");
+            }
+        }
     }
     #[cfg(target_os = "windows")]
     #[repr(C)]

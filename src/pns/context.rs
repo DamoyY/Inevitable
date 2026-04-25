@@ -2,8 +2,8 @@ use super::node::NodeRef;
 use crate::game_state::{
     BitboardWorkspace, GomokuGameState, GomokuRules, MoveApplyTiming, MoveGenBuffers, MoveGenTiming,
 };
+use alloc::collections::VecDeque;
 use hashbrown::HashMap;
-use std::collections::VecDeque;
 const NODE_CACHE_CAPACITY: usize = 1024;
 type NodeKey = (u64, usize);
 struct LocalNodeCache {

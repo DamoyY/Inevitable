@@ -4,10 +4,8 @@ use crate::{
     pns::{NodeTable, ParallelSolver, SearchParams, TranspositionTable},
     utils::board_index,
 };
-use std::sync::{
-    Arc,
-    atomic::{AtomicBool, Ordering},
-};
+use alloc::sync::Arc;
+use core::sync::atomic::{AtomicBool, Ordering};
 mod input;
 use input::read_player_move;
 const BENCHMARK_BOARD_7X7: [&str; 7] = [
@@ -16,20 +14,23 @@ const BENCHMARK_BOARD_7X7: [&str; 7] = [
 #[inline]
 pub fn print_board(board: &[u8], board_size: usize) {
     print!("  ");
-    for i in 0..board_size {
-        print!("{i:2} ");
+    for column_index in 0..board_size {
+        print!("{column_index:2} ");
     }
     println!();
-    for r in 0..board_size {
-        print!("{r:2} ");
-        for c in 0..board_size {
-            let cell = board[board_index(board_size, r, c)];
-            let c = match cell {
+    for row_index in 0..board_size {
+        print!("{row_index:2} ");
+        for column_index in 0..board_size {
+            let Some(cell) = board.get(board_index(board_size, row_index, column_index)) else {
+                eprintln!("棋盘数据长度不足，无法打印位置 ({row_index}, {column_index})。");
+                return;
+            };
+            let cell_text = match *cell {
                 1 => "X",
                 2 => "O",
                 _ => ".",
             };
-            print!("{c}  ");
+            print!("{cell_text}  ");
         }
         println!();
     }
@@ -105,7 +106,7 @@ fn benchmark_board(board_size: usize) -> Result<Vec<u8>, String> {
                 b'X' => 1,
                 b'O' => 2,
                 _ => {
-                    return Err(format!("基准残局包含非法字符 '{}'。", cell as char));
+                    return Err(format!("基准残局包含非法字符 '{}'。", char::from(cell)));
                 }
             };
             board.push(value);
@@ -182,8 +183,12 @@ fn ai_turn(
     let num_threads = config.num_threads;
     let verbose = config.verbose;
     println!("\n轮到程序 (X) 落子。");
-    let mov = if board_empty {
-        (board_size / 2, board_size / 2)
+    let selected_move = if board_empty {
+        let Some(center) = board_size.checked_div(2) else {
+            eprintln!("棋盘大小无法计算中心点。");
+            return true;
+        };
+        (center, center)
     } else {
         println!("程序正在思考...");
         let params = SearchParams::new(board_size, win_len, num_threads, config.evaluation);
@@ -197,8 +202,8 @@ fn ai_turn(
         );
         *tt = Some(new_tt);
         *node_table = new_node_table;
-        if let Some(mov) = best_move {
-            mov
+        if let Some(best_move_coord) = best_move {
+            best_move_coord
         } else {
             println!("搜索已中断。");
             return true;
@@ -207,8 +212,21 @@ fn ai_turn(
     if exit_flag.load(Ordering::SeqCst) {
         return true;
     }
-    println!("程序选择落子于: {mov:?}");
-    board[board_index(board_size, mov.0, mov.1)] = 1;
+    println!(
+        "程序选择落子于: ({row}, {column})",
+        row = selected_move.0,
+        column = selected_move.1
+    );
+    let move_index = board_index(board_size, selected_move.0, selected_move.1);
+    let Some(cell) = board.get_mut(move_index) else {
+        eprintln!(
+            "程序落子位置超出棋盘数据范围: ({row}, {column})。",
+            row = selected_move.0,
+            column = selected_move.1
+        );
+        return true;
+    };
+    *cell = 1;
     if check_win(board, board_size, win_len, config.evaluation, 1) {
         println!("\n最终棋盘:");
         print_board(board, board_size);
@@ -219,10 +237,19 @@ fn ai_turn(
 }
 fn player_turn(board: &mut [u8], board_size: usize, exit_flag: &AtomicBool) -> bool {
     println!("\n轮到您 (O) 落子。");
-    let Some(mov) = read_player_move(board, board_size, exit_flag) else {
+    let Some(player_move) = read_player_move(board, board_size, exit_flag) else {
         return true;
     };
-    board[board_index(board_size, mov.0, mov.1)] = 2;
+    let move_index = board_index(board_size, player_move.0, player_move.1);
+    let Some(cell) = board.get_mut(move_index) else {
+        eprintln!(
+            "玩家落子位置超出棋盘数据范围: ({row}, {column})。",
+            row = player_move.0,
+            column = player_move.1
+        );
+        return true;
+    };
+    *cell = 2;
     false
 }
 fn check_win(

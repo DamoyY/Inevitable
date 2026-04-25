@@ -1,16 +1,16 @@
 use super::{SharedTree, duration_to_ns};
 use crate::{
     alloc_stats::AllocTrackingGuard,
+    checked,
     pns::{
         TreeStatsAccumulator,
         context::ThreadLocalContext,
         node::{ChildRef, NodeRef, ParallelNode},
     },
 };
-use std::{
-    sync::{Arc, atomic::Ordering},
-    time::Instant,
-};
+use alloc::sync::Arc;
+use core::sync::atomic::Ordering;
+use std::time::Instant;
 impl SharedTree {
     #[inline]
     pub fn evaluate_node(&self, node: &ParallelNode, ctx: &ThreadLocalContext) {
@@ -31,7 +31,7 @@ impl SharedTree {
         let mut p1_wins = false;
         let mut p2_wins = false;
         if node.depth > 0 {
-            let opponent = 3 - node.player;
+            let opponent = checked::opponent_player(node.player, "SharedTree::evaluate_node");
             if ctx.check_win(opponent) {
                 if opponent == 1 {
                     p1_wins = true;
@@ -111,13 +111,20 @@ impl SharedTree {
             local_stats.add_move_apply_timing(&move_timing);
             let pos_hash_start = Instant::now();
             let child_pos_hash = ctx.get_hash();
-            local_stats.hash_time_ns = local_stats
-                .hash_time_ns
-                .wrapping_add(duration_to_ns(pos_hash_start.elapsed()));
-            let node_key = (child_pos_hash, depth + 1);
-            let is_depth_limited = self.depth_limit.is_some_and(|limit| depth + 1 >= limit);
+            local_stats.hash_time_ns = checked::add_u64(
+                local_stats.hash_time_ns,
+                duration_to_ns(pos_hash_start.elapsed()),
+                "SharedTree::expand_node::hash_time_ns",
+            );
+            let child_depth = checked::add_usize(depth, 1_usize, "SharedTree::expand_node::depth");
+            let node_key = (child_pos_hash, child_depth);
+            let is_depth_limited = self.depth_limit.is_some_and(|limit| child_depth >= limit);
             let child = ctx.get_cached_node(&node_key).unwrap_or_else(|| {
-                local_stats.node_table_lookups = local_stats.node_table_lookups.wrapping_add(1);
+                local_stats.node_table_lookups = checked::add_u64(
+                    local_stats.node_table_lookups,
+                    1_u64,
+                    "SharedTree::expand_node::node_table_lookups",
+                );
                 let child =
                     self.get_or_create_child(ctx, node_key, player, depth, is_depth_limited);
                 ctx.cache_node(node_key, Arc::clone(&child));
@@ -125,9 +132,11 @@ impl SharedTree {
             });
             let undo_start = Instant::now();
             ctx.undo_move(mov, player);
-            local_stats.move_undo_time_ns = local_stats
-                .move_undo_time_ns
-                .wrapping_add(duration_to_ns(undo_start.elapsed()));
+            local_stats.move_undo_time_ns = checked::add_u64(
+                local_stats.move_undo_time_ns,
+                duration_to_ns(undo_start.elapsed()),
+                "SharedTree::expand_node::move_undo_time_ns",
+            );
             let proof_number = child.get_pn();
             let disproof_number = child.get_dn();
             children.push(ChildRef { node: child, mov });
@@ -141,7 +150,8 @@ impl SharedTree {
         }
         ctx.legal_moves = legal_moves;
         let early_cutoff = children.len() < legal_moves_len;
-        let children_len = children.len() as u64;
+        let children_len =
+            checked::usize_to_u64(children.len(), "SharedTree::expand_node::children_len");
         if node.children.set(children).is_err() {
             return false;
         }
@@ -180,8 +190,8 @@ impl SharedTree {
                     Ordering::Relaxed,
                 );
                 let child = Arc::new(ParallelNode::new(
-                    3 - player,
-                    depth + 1,
+                    checked::opponent_player(player, "SharedTree::get_or_create_child"),
+                    checked::add_usize(depth, 1_usize, "SharedTree::get_or_create_child::depth"),
                     child_hash,
                     is_depth_limited,
                 ));

@@ -1,8 +1,7 @@
 use super::{context::ThreadLocalContext, shared_tree::SharedTree};
-use std::sync::{
-    Arc, OnceLock,
-    atomic::{AtomicBool, AtomicU64, Ordering},
-};
+use alloc::sync::Arc;
+use core::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::OnceLock;
 pub type NodeRef = Arc<ParallelNode>;
 #[derive(Clone)]
 pub struct ChildRef {

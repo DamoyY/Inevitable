@@ -1,7 +1,9 @@
+use crate::checked;
 use crate::config::EvaluationConfig;
 use crate::utils::duration_to_ns;
+use alloc::sync::Arc;
 use smallvec::SmallVec;
-use std::{sync::Arc, time::Instant};
+use std::time::Instant;
 mod bitboard;
 mod evaluation;
 mod moves;
@@ -20,31 +22,35 @@ pub struct MoveGenTiming {
     pub candidate_gen_ns: u64,
     pub scoring_ns: u64,
 }
-pub struct MoveGenBuffers<'a> {
-    pub score_buffer: &'a mut Vec<f32>,
-    pub forcing_bits: &'a mut Vec<u64>,
-    pub scored_moves: &'a mut Vec<(Coord, f32)>,
-    pub out_moves: &'a mut Vec<Coord>,
-    pub proximity_scores: Option<&'a [f32]>,
+pub struct MoveGenBuffers<'buffers> {
+    pub score_buffer: &'buffers mut Vec<f32>,
+    pub forcing_bits: &'buffers mut Vec<u64>,
+    pub scored_moves: &'buffers mut Vec<(Coord, f32)>,
+    pub out_moves: &'buffers mut Vec<Coord>,
+    pub proximity_scores: Option<&'buffers [f32]>,
 }
-fn record_duration_ns<F: FnOnce()>(field: &mut u64, f: F) {
+fn record_duration_ns<F: FnOnce()>(field: &mut u64, operation: F) {
     let start = Instant::now();
-    f();
+    operation();
     *field = duration_to_ns(start.elapsed());
 }
-fn record_duration_add_ns<F: FnOnce()>(field: &mut u64, f: F) {
+fn record_duration_add_ns<F: FnOnce()>(field: &mut u64, operation: F) {
     let start = Instant::now();
-    f();
-    *field = field.saturating_add(duration_to_ns(start.elapsed()));
+    operation();
+    *field = checked::add_u64(
+        *field,
+        duration_to_ns(start.elapsed()),
+        "game_state::record_duration_add_ns",
+    );
 }
 pub(crate) struct GomokuRules;
 impl GomokuRules {
     fn sort_scored_moves(scored_moves: &mut [(Coord, f32)]) {
-        scored_moves.sort_unstable_by(|a, b| b.1.total_cmp(&a.1));
+        scored_moves.sort_unstable_by(|left, right| right.1.total_cmp(&left.1));
     }
     fn fill_moves_from_scored(moves: &mut Vec<Coord>, scored_moves: &[(Coord, f32)]) {
         moves.clear();
-        moves.extend(scored_moves.iter().map(|(coord, _)| *coord));
+        moves.extend(scored_moves.iter().map(|scored_move| scored_move.0));
     }
     fn score_and_sort_moves_in_place(
         evaluator: &GomokuEvaluator,

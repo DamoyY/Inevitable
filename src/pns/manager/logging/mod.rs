@@ -2,28 +2,27 @@ use super::{
     super::{TimingStats, TreeStatsSnapshot, stats_def::to_f64},
     SharedTree,
 };
+use crate::checked;
+use core::sync::atomic::{AtomicBool, Ordering};
 use std::{
     fs::{File, OpenOptions},
     io::{self, BufWriter, Write},
-    sync::{
-        Mutex,
-        atomic::{AtomicBool, Ordering},
-    },
+    sync::Mutex,
 };
 const LOG_FILE_NAME: &str = "log.csv";
 static LOG_FILE_TRUNCATED: AtomicBool = AtomicBool::new(false);
 static LAST_LOG_STATE: Mutex<Option<LastLogState>> = Mutex::new(None);
 fn trim_sci(value: String) -> String {
     if let Some(pos) = value.find('e') {
-        let (mantissa, exp) = value.split_at(pos);
-        let mut mantissa = mantissa.to_string();
-        while mantissa.ends_with('0') {
-            mantissa.pop();
+        let (mantissa_text, exp) = value.split_at(pos);
+        let mut trimmed_mantissa = String::from(mantissa_text);
+        while trimmed_mantissa.ends_with('0') {
+            trimmed_mantissa.pop();
         }
-        if mantissa.ends_with('.') {
-            mantissa.pop();
+        if trimmed_mantissa.ends_with('.') {
+            trimmed_mantissa.pop();
         }
-        return format!("{mantissa}{exp}");
+        return format!("{trimmed_mantissa}{exp}");
     }
     value
 }
@@ -32,24 +31,35 @@ pub(super) fn format_sci_f64(value: f64) -> String {
 }
 pub(super) fn format_sci_u64(value: u64) -> String {
     if value == 0 {
-        return "0".to_string();
+        return String::from("0");
     }
-    let s = value.to_string();
-    let mut exponent = s.len().saturating_sub(1);
-    let mut sig = s.chars().take(3).collect::<String>();
+    let decimal_text = value.to_string();
+    let mut exponent = checked::sub_usize(decimal_text.len(), 1_usize, "format_sci_u64::exponent");
+    let mut sig = decimal_text.chars().take(3).collect::<String>();
     while sig.len() < 3 {
         sig.push('0');
     }
-    let mut sig_val = sig.parse::<u32>().unwrap_or(0);
-    if s.len() > 3 && s.as_bytes()[3] >= b'5' {
-        sig_val = sig_val.saturating_add(1);
+    let mut sig_val = match sig.parse::<u32>() {
+        Ok(parsed_sig) => parsed_sig,
+        Err(err) => {
+            eprintln!("解析科学计数法有效数字失败: {sig}, 错误: {err}");
+            panic!("解析科学计数法有效数字失败");
+        }
+    };
+    if decimal_text.len() > 3
+        && decimal_text
+            .as_bytes()
+            .get(3)
+            .is_some_and(|digit| *digit >= b'5')
+    {
+        sig_val = checked::add_u32(sig_val, 1_u32, "format_sci_u64::round_significand");
     }
     if sig_val >= 1000 {
         sig_val = 100;
-        exponent = exponent.saturating_add(1);
+        exponent = checked::add_usize(exponent, 1_usize, "format_sci_u64::round_exponent");
     }
-    let leading = sig_val / 100;
-    let remainder = sig_val % 100;
+    let leading = checked::div_u32(sig_val, 100_u32, "format_sci_u64::leading");
+    let remainder = checked::rem_u32(sig_val, 100_u32, "format_sci_u64::remainder");
     trim_sci(format!("{leading}.{remainder:02}e{exponent}"))
 }
 pub(super) fn format_sci_usize(value: usize) -> String {
@@ -109,10 +119,10 @@ fn delta_since_last(stats: TreeStatsSnapshot, elapsed_secs: f64) -> (TreeStatsSn
             elapsed_secs,
         });
         drop(guard);
-        prev.map_or((stats, elapsed_secs), |prev| {
+        prev.map_or((stats, elapsed_secs), |last| {
             (
-                stats.delta_since(&prev.stats),
-                (elapsed_secs - prev.elapsed_secs).max(0.0),
+                stats.delta_since(&last.stats),
+                (elapsed_secs - last.elapsed_secs).max(0.0_f64),
             )
         })
     };
@@ -130,7 +140,7 @@ fn open_log_writer() -> io::Result<BufWriter<File>> {
     let file = options.open(LOG_FILE_NAME)?;
     let mut writer = BufWriter::new(file);
     if truncate {
-        let _ = writer.write_all(&[0xEF, 0xBB, 0xBF]);
+        writer.write_all(&[0xEF, 0xBB, 0xBF])?;
         write_csv_header(&mut writer)?;
         writer.flush()?;
     }
@@ -189,8 +199,8 @@ fn write_log(
     for &value in timing_stats.csv_values() {
         fields.push(format_sci_f64(value));
     }
-    let elapsed_us = elapsed_secs * 1_000_000.0;
-    let other_us = (elapsed_us - timing_stats.sum_us()).max(0.0);
+    let elapsed_us = elapsed_secs * 1_000_000.0_f64;
+    let other_us = (elapsed_us - timing_stats.sum_us()).max(0.0_f64);
     fields.push(format_sci_f64(other_us));
     fields.push(format_sci_u64(stats.depth_cutoffs));
     fields.push(format_sci_u64(stats.early_cutoffs));
@@ -202,16 +212,21 @@ pub(super) fn write_csv_log(tree: &SharedTree, turn: usize, elapsed_secs: f64) {
     };
     let snapshot = capture_snapshot(tree);
     let (delta_stats, delta_elapsed_secs) = delta_since_last(snapshot.stats, elapsed_secs);
-    if write_log(
+    match write_log(
         &mut writer,
         turn,
         delta_elapsed_secs,
         &snapshot,
         delta_stats,
-    )
-    .is_ok()
-    {
-        let _ = writer.flush();
+    ) {
+        Ok(()) => {
+            if let Err(err) = writer.flush() {
+                eprintln!("刷新日志文件失败: {err}");
+            }
+        }
+        Err(err) => {
+            eprintln!("写入日志失败: {err}");
+        }
     }
 }
 pub(super) fn write_csv_log_snapshot(
@@ -231,7 +246,14 @@ pub(super) fn write_csv_log_snapshot(
         node_table_size,
         depth_limit,
     };
-    if write_log(&mut writer, turn, elapsed_secs, &snapshot, stats).is_ok() {
-        let _ = writer.flush();
+    match write_log(&mut writer, turn, elapsed_secs, &snapshot, stats) {
+        Ok(()) => {
+            if let Err(err) = writer.flush() {
+                eprintln!("刷新日志文件失败: {err}");
+            }
+        }
+        Err(err) => {
+            eprintln!("写入日志快照失败: {err}");
+        }
     }
 }

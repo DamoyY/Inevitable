@@ -7,17 +7,12 @@ use super::{
 };
 use crate::{
     alloc_stats::AllocTrackingGuard,
+    checked,
     pns::{NodeTable, SharedTree, TranspositionTable, Worker, context::ThreadLocalContext},
 };
-use std::{
-    collections::BTreeMap,
-    sync::{
-        Arc,
-        atomic::{AtomicBool, Ordering},
-    },
-    thread,
-    time::Instant,
-};
+use alloc::{collections::BTreeMap, sync::Arc};
+use core::sync::atomic::{AtomicBool, Ordering};
+use std::{thread, time::Instant};
 impl ParallelSolver {
     #[inline]
     #[must_use]
@@ -54,12 +49,12 @@ impl ParallelSolver {
     fn spawn_workers(&self, tree: &Arc<SharedTree>) -> Vec<thread::JoinHandle<()>> {
         (0..self.num_threads)
             .map(|thread_id| {
-                let tree = Arc::clone(tree);
+                let cloned_tree = Arc::clone(tree);
                 let game_state = self.clone_game_state();
                 thread::spawn(move || {
                     let _alloc_guard = AllocTrackingGuard::new();
                     let ctx = ThreadLocalContext::new(game_state, thread_id);
-                    let mut worker = Worker::new(tree, ctx);
+                    let mut worker = Worker::new(cloned_tree, ctx);
                     worker.run();
                 })
             })
@@ -67,7 +62,9 @@ impl ParallelSolver {
     }
     fn wait_for_workers(handles: Vec<thread::JoinHandle<()>>) {
         for handle in handles {
-            let _ = handle.join();
+            if handle.join().is_err() {
+                eprintln!("工作线程异常退出。");
+            }
         }
     }
     fn run_iterative_deepening<R, H>(
@@ -92,7 +89,7 @@ impl ParallelSolver {
             if found {
                 return hooks.on_found(depth, solver);
             }
-            depth += 1;
+            depth = checked::add_usize(depth, 1_usize, "ParallelSolver::run_iterative_deepening");
             if stop_flag.load(Ordering::Acquire) {
                 return hooks.on_stop(solver);
             }
@@ -143,16 +140,28 @@ impl ParallelSolver {
             };
             Self::run_iterative_deepening(&mut solver, stop_flag, depth, &mut hooks)?;
         }
-        let runs_count = runs as u64;
-        let runs_divisor = f64::from(u32::try_from(runs).unwrap_or(u32::MAX));
+        let runs_count =
+            checked::usize_to_u64(runs, "ParallelSolver::benchmark_next_move::runs_count");
+        let runs_divisor = super::super::stats_def::to_f64(runs_count);
         write_benchmark_logs(per_depth);
         let stats = total_stats.div_round(runs_count);
         let elapsed_secs = total_elapsed_secs / runs_divisor;
-        let tt_size_u64 = (total_tt_size.saturating_add(runs_count / 2)) / runs_count;
-        let node_table_size_u64 =
-            (total_node_table_size.saturating_add(runs_count / 2)) / runs_count;
-        let tt_size = usize::try_from(tt_size_u64).unwrap_or(usize::MAX);
-        let node_table_size = usize::try_from(node_table_size_u64).unwrap_or(usize::MAX);
+        let tt_size_u64 = checked::rounded_div_u64(
+            total_tt_size,
+            runs_count,
+            "ParallelSolver::benchmark_next_move::tt_size",
+        );
+        let node_table_size_u64 = checked::rounded_div_u64(
+            total_node_table_size,
+            runs_count,
+            "ParallelSolver::benchmark_next_move::node_table_size",
+        );
+        let tt_size =
+            checked::u64_to_usize(tt_size_u64, "ParallelSolver::benchmark_next_move::tt_size");
+        let node_table_size = checked::u64_to_usize(
+            node_table_size_u64,
+            "ParallelSolver::benchmark_next_move::node_table_size",
+        );
         Some(BenchmarkResult {
             elapsed_secs,
             stats,
@@ -237,21 +246,26 @@ impl ParallelSolver {
         let root_win_len = root.get_win_len();
         let winning_children: Vec<_> = children
             .iter()
-            .filter(|c| {
-                c.node.get_pn() == 0 && 1_u64.saturating_add(c.node.get_win_len()) == root_win_len
+            .filter(|child_ref| {
+                child_ref.node.get_pn() == 0
+                    && checked::add_u64(
+                        1_u64,
+                        child_ref.node.get_win_len(),
+                        "ParallelSolver::get_best_move::root_win_len",
+                    ) == root_win_len
             })
             .collect();
         if winning_children.is_empty() {
             children
                 .iter()
-                .filter(|c| c.node.get_pn() == 0)
-                .min_by_key(|c| (c.node.get_win_len(), c.mov))
-                .map(|c| c.mov)
+                .filter(|child_ref| child_ref.node.get_pn() == 0)
+                .min_by_key(|child_ref| (child_ref.node.get_win_len(), child_ref.mov))
+                .map(|child_ref| child_ref.mov)
         } else {
             winning_children
                 .iter()
-                .min_by_key(|c| (c.node.get_win_len(), c.mov))
-                .map(|c| c.mov)
+                .min_by_key(|child_ref| (child_ref.node.get_win_len(), child_ref.mov))
+                .map(|child_ref| child_ref.mov)
         }
     }
     #[inline]

@@ -1,6 +1,9 @@
 use super::Coord;
+use crate::checked;
 use smallvec::{SmallVec, smallvec};
 mod ops;
+const WORD_BITS: usize = 64;
+const WORD_BITS_OFFSET: usize = 63;
 #[derive(Clone, Debug, Default)]
 pub struct Bitboard {
     black: SmallVec<[u64; 8]>,
@@ -11,13 +14,35 @@ pub struct Bitboard {
 pub struct BitboardWorkspace {
     scratch_pad: [Vec<u64>; 5],
 }
-type ScratchPads<'a> = (
-    &'a mut Vec<u64>,
-    &'a mut Vec<u64>,
-    &'a mut Vec<u64>,
-    &'a mut Vec<u64>,
-    &'a mut Vec<u64>,
-);
+type ScratchPads<'workspace> = [&'workspace mut Vec<u64>; 5];
+fn bit_mask(bit_index: usize, context: &str) -> u64 {
+    checked::shl_u64(1_u64, bit_index, context)
+}
+fn words_for_bits(total_bits: usize) -> usize {
+    if total_bits == 0 {
+        return 0;
+    }
+    let adjusted = checked::add_usize(total_bits, WORD_BITS_OFFSET, "Bitboard::words_for_bits");
+    checked::div_usize(adjusted, WORD_BITS, "Bitboard::words_for_bits")
+}
+pub(super) fn word_at(bits: &[u64], word_index: usize, context: &str) -> u64 {
+    let Some(word) = bits.get(word_index) else {
+        eprintln!("{context} 位棋盘字索引越界: {word_index}");
+        panic!("{context} 位棋盘字索引越界");
+    };
+    *word
+}
+pub(super) fn word_mut<'bits>(
+    bits: &'bits mut [u64],
+    word_index: usize,
+    context: &str,
+) -> &'bits mut u64 {
+    let Some(word) = bits.get_mut(word_index) else {
+        eprintln!("{context} 位棋盘字索引越界: {word_index}");
+        panic!("{context} 位棋盘字索引越界");
+    };
+    word
+}
 impl BitboardWorkspace {
     #[inline]
     #[must_use]
@@ -26,17 +51,16 @@ impl BitboardWorkspace {
         Self { scratch_pad }
     }
     #[inline]
-    pub const fn pads_mut(&mut self) -> ScratchPads<'_> {
-        let [pad0, pad1, pad2, pad3, pad4] = &mut self.scratch_pad;
-        (pad0, pad1, pad2, pad3, pad4)
+    pub(super) const fn pads_mut(&mut self) -> ScratchPads<'_> {
+        self.scratch_pad.each_mut()
     }
 }
 impl Bitboard {
     #[inline]
     #[must_use]
     pub fn new(board_size: usize) -> Self {
-        let total_bits = board_size * board_size;
-        let num_words = total_bits.div_ceil(64);
+        let total_bits = checked::mul_usize(board_size, board_size, "Bitboard::new::total_bits");
+        let num_words = words_for_bits(total_bits);
         Self {
             black: smallvec ! [0 ; num_words],
             white: smallvec ! [0 ; num_words],
@@ -50,15 +74,24 @@ impl Bitboard {
         self.num_words
     }
     #[inline]
-    const fn coord_to_index(&self, r: usize, c: usize) -> (usize, usize) {
-        let bit_pos = r * self.size + c;
-        (bit_pos / 64, bit_pos % 64)
+    fn coord_to_index(&self, row_index: usize, column_index: usize) -> (usize, usize) {
+        let row_offset =
+            checked::mul_usize(row_index, self.size, "Bitboard::coord_to_index::row_offset");
+        let bit_pos = checked::add_usize(
+            row_offset,
+            column_index,
+            "Bitboard::coord_to_index::bit_pos",
+        );
+        (
+            checked::div_usize(bit_pos, WORD_BITS, "Bitboard::coord_to_index::word"),
+            checked::rem_usize(bit_pos, WORD_BITS, "Bitboard::coord_to_index::bit"),
+        )
     }
     #[inline]
     #[must_use]
-    pub const fn coord_to_bit(&self, r: usize, c: usize) -> (usize, u64) {
-        let (word_idx, bit_idx) = self.coord_to_index(r, c);
-        (word_idx, 1_u64 << bit_idx)
+    pub fn coord_to_bit(&self, row_index: usize, column_index: usize) -> (usize, u64) {
+        let (word_index, bit_index) = self.coord_to_index(row_index, column_index);
+        (word_index, bit_mask(bit_index, "Bitboard::coord_to_bit"))
     }
     #[inline]
     #[must_use]
@@ -66,123 +99,127 @@ impl Bitboard {
         smallvec ! [0_u64 ; self . num_words]
     }
     #[inline]
-    pub fn set_in(&self, bits: &mut [u64], r: usize, c: usize) -> bool {
-        let (word_idx, mask) = self.coord_to_bit(r, c);
-        let was_set = bits[word_idx] & mask != 0;
-        bits[word_idx] |= mask;
+    pub(super) fn set_in(&self, bits: &mut [u64], row_index: usize, column_index: usize) -> bool {
+        let (word_index, mask) = self.coord_to_bit(row_index, column_index);
+        let word = word_mut(bits, word_index, "Bitboard::set_in");
+        let was_set = *word & mask != 0;
+        *word |= mask;
         !was_set
     }
     #[inline]
-    pub fn clear_in(&self, bits: &mut [u64], r: usize, c: usize) -> bool {
-        let (word_idx, mask) = self.coord_to_bit(r, c);
-        let was_set = bits[word_idx] & mask != 0;
-        bits[word_idx] &= !mask;
+    pub(super) fn clear_in(&self, bits: &mut [u64], row_index: usize, column_index: usize) -> bool {
+        let (word_index, mask) = self.coord_to_bit(row_index, column_index);
+        let word = word_mut(bits, word_index, "Bitboard::clear_in");
+        let was_set = *word & mask != 0;
+        *word &= !mask;
         was_set
     }
     #[inline]
-    pub fn set(&mut self, r: usize, c: usize, player: u8) {
-        let (word_idx, bit_idx) = self.coord_to_index(r, c);
-        let bit = 1_u64 << bit_idx;
-        if player == 1 {
-            self.black[word_idx] |= bit;
-        } else if player == 2 {
-            self.white[word_idx] |= bit;
+    pub(super) fn set(&mut self, row_index: usize, column_index: usize, player: u8) {
+        let (word_index, bit) = self.coord_to_bit(row_index, column_index);
+        match player {
+            1 => {
+                *word_mut(&mut self.black, word_index, "Bitboard::set::black") |= bit;
+            }
+            2 => {
+                *word_mut(&mut self.white, word_index, "Bitboard::set::white") |= bit;
+            }
+            _ => {
+                eprintln!("Bitboard::set 收到非法玩家编号: {player}");
+                panic!("Bitboard::set 收到非法玩家编号");
+            }
         }
     }
     #[inline]
-    pub fn clear(&mut self, r: usize, c: usize) {
-        let (word_idx, bit_idx) = self.coord_to_index(r, c);
-        let bit = 1_u64 << bit_idx;
-        self.black[word_idx] &= !bit;
-        self.white[word_idx] &= !bit;
+    pub(super) fn clear(&mut self, row_index: usize, column_index: usize) {
+        let (word_index, bit) = self.coord_to_bit(row_index, column_index);
+        *word_mut(&mut self.black, word_index, "Bitboard::clear::black") &= !bit;
+        *word_mut(&mut self.white, word_index, "Bitboard::clear::white") &= !bit;
     }
     #[inline]
-    pub fn occupied_into(&self, target: &mut Vec<u64>) {
+    pub(super) fn occupied_into(&self, target: &mut Vec<u64>) {
         self.resize_target(target);
-        for ((word, b), w) in target
+        for ((target_word, black_word), white_word) in target
             .iter_mut()
             .zip(self.black.iter())
             .zip(self.white.iter())
         {
-            *word = b | w;
+            *target_word = *black_word | *white_word;
         }
     }
     #[inline]
-    pub fn empty_into(&self, target: &mut Vec<u64>) {
+    pub(super) fn empty_into(&self, target: &mut Vec<u64>) {
         self.resize_target(target);
-        for ((word, b), w) in target
+        for ((target_word, black_word), white_word) in target
             .iter_mut()
             .zip(self.black.iter())
             .zip(self.white.iter())
         {
-            *word = !(b | w);
+            *target_word = !(*black_word | *white_word);
         }
         self.apply_mask(target);
     }
     #[inline]
     #[must_use]
     pub fn is_all_zeros(bits: &[u64]) -> bool {
-        bits.iter().all(|&w| w == 0)
+        bits.iter().all(|&word| word == 0)
+    }
+    #[inline]
+    pub fn iter_bits<'bits>(&self, bit_words: &'bits [u64]) -> impl Iterator<Item = Coord> + 'bits {
+        let board_size = self.size;
+        bit_words
+            .iter()
+            .copied()
+            .enumerate()
+            .flat_map(move |(word_index, word)| {
+                let base_bit =
+                    checked::mul_usize(word_index, WORD_BITS, "Bitboard::iter_bits::base_bit");
+                (0_usize..WORD_BITS).filter_map(move |bit_index| {
+                    let mask = bit_mask(bit_index, "Bitboard::iter_bits::mask");
+                    if word & mask == 0 {
+                        return None;
+                    }
+                    let global_bit =
+                        checked::add_usize(base_bit, bit_index, "Bitboard::iter_bits::global_bit");
+                    let row_index =
+                        checked::div_usize(global_bit, board_size, "Bitboard::iter_bits::row");
+                    if row_index >= board_size {
+                        return None;
+                    }
+                    let column_index =
+                        checked::rem_usize(global_bit, board_size, "Bitboard::iter_bits::column");
+                    Some((row_index, column_index))
+                })
+            })
     }
     #[inline]
     #[must_use]
-    pub const fn iter_bits<'a>(&self, bb: &'a [u64]) -> BitIterator<'a> {
-        BitIterator {
-            bits: bb,
-            size: self.size,
-            word_idx: 0,
-            base_bit: 0,
-            current_word: 0,
+    pub(super) fn from_board(board: &[u8], board_size: usize) -> Self {
+        let expected_len =
+            checked::mul_usize(board_size, board_size, "Bitboard::from_board::expected_len");
+        if board.len() != expected_len {
+            eprintln!(
+                "Bitboard::from_board 棋盘长度不匹配: 实际 {}, 期望 {}",
+                board.len(),
+                expected_len
+            );
+            panic!("Bitboard::from_board 棋盘长度不匹配");
         }
-    }
-    #[inline]
-    #[must_use]
-    pub fn from_board(board: &[u8], board_size: usize) -> Self {
-        let mut bb = Self::new(board_size);
-        for r in 0..board_size {
-            for c in 0..board_size {
-                let cell = board[r * board_size + c];
-                if cell == 1 {
-                    bb.set(r, c, 1);
-                } else if cell == 2 {
-                    bb.set(r, c, 2);
+        let mut bitboard = Self::new(board_size);
+        for (flat_index, &cell) in board.iter().enumerate() {
+            let row_index = checked::div_usize(flat_index, board_size, "Bitboard::from_board::row");
+            let column_index =
+                checked::rem_usize(flat_index, board_size, "Bitboard::from_board::column");
+            match cell {
+                0 => {}
+                1 => bitboard.set(row_index, column_index, 1),
+                2 => bitboard.set(row_index, column_index, 2),
+                _ => {
+                    eprintln!("Bitboard::from_board 收到非法棋子编号: {cell}");
+                    panic!("Bitboard::from_board 收到非法棋子编号");
                 }
             }
         }
-        bb
-    }
-}
-pub struct BitIterator<'a> {
-    pub(super) bits: &'a [u64],
-    pub(super) size: usize,
-    pub(super) word_idx: usize,
-    pub(super) base_bit: usize,
-    pub(super) current_word: u64,
-}
-impl Iterator for BitIterator<'_> {
-    type Item = Coord;
-    #[inline]
-    fn next(&mut self) -> Option<Self::Item> {
-        loop {
-            if self.current_word == 0 {
-                if self.word_idx >= self.bits.len() {
-                    return None;
-                }
-                self.current_word = self.bits[self.word_idx];
-                if self.current_word == 0 {
-                    self.word_idx += 1;
-                    self.base_bit += 64;
-                    continue;
-                }
-            }
-            let bit_in_word = self.current_word.trailing_zeros() as usize;
-            self.current_word &= self.current_word - 1;
-            let global_bit = self.base_bit + bit_in_word;
-            if self.current_word == 0 {
-                self.word_idx += 1;
-                self.base_bit += 64;
-            }
-            return Some((global_bit / self.size, global_bit % self.size));
-        }
+        bitboard
     }
 }

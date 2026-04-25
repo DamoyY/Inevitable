@@ -107,8 +107,8 @@ impl GomokuPosition {
         position
     }
     #[inline]
-    pub(crate) const fn board_index(&self, r: usize, c: usize) -> usize {
-        board_index(self.board_size, r, c)
+    pub(crate) fn board_index(&self, row_index: usize, column_index: usize) -> usize {
+        board_index(self.board_size, row_index, column_index)
     }
     pub(crate) fn rebuild_hashes(&mut self, player: u8) {
         self.hash = 0;

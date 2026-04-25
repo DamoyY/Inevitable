@@ -11,7 +11,7 @@ impl GomokuRules {
         cache: &mut GomokuMoveCache,
         workspace: &mut BitboardWorkspace,
     ) {
-        let (occupied, neighbors, masked_not_left, masked_not_right, temp) = workspace.pads_mut();
+        let [occupied, neighbors, masked_not_left, masked_not_right, temp] = workspace.pads_mut();
         position.bitboard.occupied_into(occupied);
         if Bitboard::is_all_zeros(occupied) {
             cache.candidate_moves.fill(0);
@@ -227,7 +227,7 @@ impl GomokuRules {
             return timing;
         }
         let start_empty = Instant::now();
-        let (empty_bits, ..) = workspace.pads_mut();
+        let [empty_bits, ..] = workspace.pads_mut();
         position.bitboard.empty_into(empty_bits);
         if Bitboard::is_all_zeros(empty_bits) {
             out_moves.clear();

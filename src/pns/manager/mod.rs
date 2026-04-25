@@ -4,15 +4,13 @@ use super::{
     shared_tree::{NodeTable, SharedTree, TranspositionTable},
 };
 use crate::{
-    alloc_stats,
+    alloc_stats, checked,
     config::EvaluationConfig,
     game_state::{GomokuGameState, ZobristHasher},
 };
-use std::{
-    collections::BTreeMap,
-    sync::{Arc, atomic::AtomicBool},
-    time::Instant,
-};
+use alloc::{collections::BTreeMap, string::String, sync::Arc};
+use core::sync::atomic::AtomicBool;
+use std::time::Instant;
 mod logging;
 mod solve;
 use logging::{format_sci_u64, format_sci_usize};
@@ -71,19 +69,37 @@ impl DepthAccumulator {
     ) {
         self.total_stats.add_assign(&stats);
         self.total_elapsed_secs += elapsed_secs;
-        self.total_tt_size = self.total_tt_size.saturating_add(tt_size);
-        self.total_node_table_size = self.total_node_table_size.saturating_add(node_table_size);
-        self.count = self.count.saturating_add(1);
+        self.total_tt_size = checked::add_u64(
+            self.total_tt_size,
+            tt_size,
+            "DepthAccumulator::total_tt_size",
+        );
+        self.total_node_table_size = checked::add_u64(
+            self.total_node_table_size,
+            node_table_size,
+            "DepthAccumulator::total_node_table_size",
+        );
+        self.count = checked::add_u64(self.count, 1_u64, "DepthAccumulator::count");
     }
     fn average(&self) -> (TreeStatsSnapshot, f64, usize, usize) {
-        let count = self.count.max(1);
-        let divisor = f64::from(u32::try_from(count).unwrap_or(u32::MAX));
+        if self.count == 0_u64 {
+            eprintln!("DepthAccumulator::average 的样本数不能为 0。");
+            panic!("DepthAccumulator::average 的样本数不能为 0");
+        }
+        let count = self.count;
+        let divisor = super::stats_def::to_f64(count);
         let stats = self.total_stats.div_round(count);
         let elapsed_secs = self.total_elapsed_secs / divisor;
-        let tt_size_u64 = (self.total_tt_size.saturating_add(count / 2)) / count;
-        let node_table_size_u64 = (self.total_node_table_size.saturating_add(count / 2)) / count;
-        let tt_size = usize::try_from(tt_size_u64).unwrap_or(usize::MAX);
-        let node_table_size = usize::try_from(node_table_size_u64).unwrap_or(usize::MAX);
+        let tt_size_u64 =
+            checked::rounded_div_u64(self.total_tt_size, count, "DepthAccumulator::tt_size");
+        let node_table_size_u64 = checked::rounded_div_u64(
+            self.total_node_table_size,
+            count,
+            "DepthAccumulator::node_table_size",
+        );
+        let tt_size = checked::u64_to_usize(tt_size_u64, "DepthAccumulator::tt_size");
+        let node_table_size =
+            checked::u64_to_usize(node_table_size_u64, "DepthAccumulator::node_table_size");
         (stats, elapsed_secs, tt_size, node_table_size)
     }
 }
@@ -110,22 +126,23 @@ trait IterativeDeepeningHooks<R> {
     fn after_solve(&mut self, _depth: usize, _solver: &mut ParallelSolver, _found: bool) {}
     fn on_found(&mut self, _depth: usize, solver: &mut ParallelSolver) -> R;
 }
-struct BenchmarkDeepening<'a> {
+struct BenchmarkDeepening<'benchmark> {
     start: Instant,
-    per_depth: &'a mut BTreeMap<usize, DepthAccumulator>,
+    per_depth: &'benchmark mut BTreeMap<usize, DepthAccumulator>,
     prev_stats: TreeStatsSnapshot,
     prev_elapsed: f64,
     last_tt_size: u64,
     last_node_table_size: u64,
-    total_stats: &'a mut TreeStatsSnapshot,
-    total_elapsed_secs: &'a mut f64,
-    total_tt_size: &'a mut u64,
-    total_node_table_size: &'a mut u64,
+    total_stats: &'benchmark mut TreeStatsSnapshot,
+    total_elapsed_secs: &'benchmark mut f64,
+    total_tt_size: &'benchmark mut u64,
+    total_node_table_size: &'benchmark mut u64,
 }
 impl IterativeDeepeningHooks<Option<()>> for BenchmarkDeepening<'_> {
     fn on_stop(&mut self, _solver: &mut ParallelSolver) -> Option<()> {
         None
     }
+    fn before_solve(&mut self, _depth: usize, _solver: &mut ParallelSolver) {}
     fn solve(&mut self, solver: &mut ParallelSolver) -> bool {
         solver.solve(false)
     }
@@ -133,9 +150,13 @@ impl IterativeDeepeningHooks<Option<()>> for BenchmarkDeepening<'_> {
         let elapsed = self.start.elapsed().as_secs_f64();
         let current_stats = solver.tree.stats_snapshot();
         let delta_stats = current_stats.delta_since(&self.prev_stats);
-        let delta_elapsed = (elapsed - self.prev_elapsed).max(0.0);
-        let tt_size = solver.tree.get_tt_size() as u64;
-        let node_table_size = solver.tree.get_node_table_size() as u64;
+        let delta_elapsed = (elapsed - self.prev_elapsed).max(0.0_f64);
+        let tt_size =
+            checked::usize_to_u64(solver.tree.get_tt_size(), "BenchmarkDeepening::tt_size");
+        let node_table_size = checked::usize_to_u64(
+            solver.tree.get_node_table_size(),
+            "BenchmarkDeepening::node_table_size",
+        );
         let entry = self.per_depth.entry(depth).or_default();
         entry.add_sample(delta_stats, delta_elapsed, tt_size, node_table_size);
         self.prev_stats = current_stats;
@@ -147,9 +168,16 @@ impl IterativeDeepeningHooks<Option<()>> for BenchmarkDeepening<'_> {
         solver.get_best_move()?;
         *self.total_elapsed_secs += self.prev_elapsed;
         self.total_stats.add_assign(&self.prev_stats);
-        *self.total_tt_size = (*self.total_tt_size).saturating_add(self.last_tt_size);
-        *self.total_node_table_size =
-            (*self.total_node_table_size).saturating_add(self.last_node_table_size);
+        *self.total_tt_size = checked::add_u64(
+            *self.total_tt_size,
+            self.last_tt_size,
+            "BenchmarkDeepening::total_tt_size",
+        );
+        *self.total_node_table_size = checked::add_u64(
+            *self.total_node_table_size,
+            self.last_node_table_size,
+            "BenchmarkDeepening::total_node_table_size",
+        );
         Some(())
     }
 }
@@ -173,6 +201,7 @@ impl IterativeDeepeningHooks<(Option<(usize, usize)>, TranspositionTable, NodeTa
     fn solve(&mut self, solver: &mut ParallelSolver) -> bool {
         solver.solve(self.verbose)
     }
+    fn after_solve(&mut self, _depth: usize, _solver: &mut ParallelSolver, _found: bool) {}
     fn on_found(
         &mut self,
         _depth: usize,
@@ -182,7 +211,7 @@ impl IterativeDeepeningHooks<(Option<(usize, usize)>, TranspositionTable, NodeTa
         if self.verbose {
             let path_len = format_sci_u64(solver.root_win_len());
             let best_move_display = best_move.map_or_else(
-                || "None".to_string(),
+                || String::from("None"),
                 |(x, y)| format!("({}, {})", format_sci_usize(x), format_sci_usize(y)),
             );
             println!("在 {path_len} 步内找到路径，最佳首步: {best_move_display}");
@@ -271,7 +300,13 @@ impl ParallelSolver {
             .position
             .board
             .iter()
-            .fold(0_usize, |count, &cell| count + usize::from(cell == 2))
+            .fold(0_usize, |count, &cell| {
+                checked::add_usize(
+                    count,
+                    usize::from(cell == 2),
+                    "ParallelSolver::current_turn",
+                )
+            })
     }
     #[inline]
     pub fn increase_depth_limit(&mut self, new_limit: usize) {

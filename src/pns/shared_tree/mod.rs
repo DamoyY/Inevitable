@@ -1,13 +1,12 @@
 use super::node::NodeRef;
+use crate::checked;
 use crate::pns::{TTEntry, TreeStatsSnapshot};
 pub(super) use crate::utils::duration_to_ns;
 use ahash::RandomState;
+use alloc::sync::Arc;
+use core::{hash::Hash, sync::atomic::Ordering};
 use hashbrown::HashMap;
 use parking_lot::RwLock;
-use std::{
-    hash::Hash,
-    sync::{Arc, atomic::Ordering},
-};
 mod expansion;
 mod tree;
 pub use tree::SharedTree;
@@ -18,7 +17,7 @@ pub struct ShardedMap<K, V> {
 }
 impl<K: Hash + Eq, V: Clone> ShardedMap<K, V> {
     pub fn new() -> Self {
-        debug_assert!(SHARD_COUNT.is_power_of_two());
+        debug_assert!(SHARD_COUNT.is_power_of_two(), "分片数量必须是 2 的幂");
         let hasher = RandomState::new();
         let mut shards = Vec::with_capacity(SHARD_COUNT);
         for _ in 0..SHARD_COUNT {
@@ -33,12 +32,12 @@ impl<K: Hash + Eq, V: Clone> ShardedMap<K, V> {
     }
     pub fn get(&self, key: &K) -> Option<V> {
         let idx = self.shard_index(key);
-        let guard = self.shards[idx].read();
+        let guard = self.shard(idx).read();
         guard.get(key).cloned()
     }
     pub fn insert(&self, key: K, value: V) {
         let idx = self.shard_index(&key);
-        let mut guard = self.shards[idx].write();
+        let mut guard = self.shard(idx).write();
         guard.insert(key, value);
     }
     pub fn len(&self) -> usize {
@@ -46,8 +45,17 @@ impl<K: Hash + Eq, V: Clone> ShardedMap<K, V> {
     }
     fn shard_index(&self, key: &K) -> usize {
         let hash = self.hasher.hash_one(key);
-        let mask = (self.shards.len() - 1) as u64;
-        usize::try_from(hash & mask).expect("shard index fits usize")
+        let last_shard_index =
+            checked::sub_usize(self.shards.len(), 1_usize, "ShardedMap::shard_index::mask");
+        let mask = checked::usize_to_u64(last_shard_index, "ShardedMap::shard_index::mask");
+        checked::u64_to_usize(hash & mask, "ShardedMap::shard_index")
+    }
+    fn shard(&self, index: usize) -> &RwLock<HashMap<K, V, RandomState>> {
+        let Some(shard) = self.shards.get(index) else {
+            eprintln!("ShardedMap 分片索引越界: {index}");
+            panic!("ShardedMap 分片索引越界");
+        };
+        shard
     }
 }
 impl<K: Hash + Eq, V: Clone> Default for ShardedMap<K, V> {
