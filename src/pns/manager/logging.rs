@@ -1,7 +1,4 @@
-use super::{
-    super::{TimingStats, TreeStatsSnapshot, stats_def::to_f64},
-    SharedTree,
-};
+use super::super::{SharedTree, TimingStats, TreeStatsSnapshot, stats_def::to_f64};
 use crate::checked;
 use core::sync::atomic::{AtomicBool, Ordering};
 use std::{

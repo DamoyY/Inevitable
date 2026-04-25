@@ -6,7 +6,12 @@ use alloc::sync::Arc;
 use core::hash::Hash;
 use hashbrown::HashMap;
 use parking_lot::RwLock;
-pub(crate) mod tree;
+mod arena;
+mod frontier;
+mod growth;
+mod judgement;
+mod resolution;
+pub(crate) use arena::SharedTree;
 const SHARD_COUNT: usize = 64;
 pub struct ShardedMap<K, V> {
     shards: Vec<RwLock<HashMap<K, V, RandomState>>>,

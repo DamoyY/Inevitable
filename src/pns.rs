@@ -12,7 +12,7 @@ pub struct TTEntry {
 pub type ParallelSolver = manager::ParallelSolver;
 pub type SearchParams = manager::SearchParams;
 pub type NodeTable = shared_tree::NodeTable;
-pub(crate) type SharedTree = shared_tree::tree::SharedTree;
+pub(crate) type SharedTree = shared_tree::SharedTree;
 pub type TranspositionTable = shared_tree::TranspositionTable;
 pub(crate) type TimingStats = stats_def::TimingStats;
 pub(crate) type TreeStatsAccumulator = stats_def::TreeStatsAccumulator;

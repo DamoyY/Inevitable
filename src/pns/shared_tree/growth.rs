@@ -1,0 +1,155 @@
+use super::{
+    super::{
+        TreeStatsAccumulator,
+        context::ThreadLocalContext,
+        node::{ChildRef, NodeRef, ParallelNode},
+    },
+    arena::SharedTree,
+};
+use crate::{alloc_stats::AllocTrackingGuard, checked, utils::duration_to_ns};
+use alloc::sync::Arc;
+use core::sync::atomic::Ordering;
+use std::time::Instant;
+impl SharedTree {
+    #[inline]
+    pub fn expand_node(&self, node: &NodeRef, ctx: &mut ThreadLocalContext) -> bool {
+        if node.children.get().is_some() || node.is_depth_cutoff() {
+            return false;
+        }
+        let expand_start = Instant::now();
+        let _alloc_guard = AllocTrackingGuard::new();
+        if let Some(limit) = self.depth_limit
+            && node.depth >= limit
+        {
+            if !node.try_mark_depth_cutoff() {
+                return false;
+            }
+            self.stats.depth_cutoffs.fetch_add(1, Ordering::Relaxed);
+            node.set_is_depth_limited(true);
+            node.set_pn(u64::MAX);
+            node.set_dn(u64::MAX);
+            node.set_win_len(u64::MAX);
+            self.stats
+                .expand_time_ns
+                .fetch_add(duration_to_ns(expand_start.elapsed()), Ordering::Relaxed);
+            return true;
+        }
+        let player = node.player;
+        let depth = node.depth;
+        let is_or_node = node.is_or_node();
+        let move_gen_timing = ctx.refresh_legal_moves(player);
+        self.stats
+            .move_gen_candidates_time_ns
+            .fetch_add(move_gen_timing.candidate_gen_ns, Ordering::Relaxed);
+        self.stats
+            .move_gen_scoring_time_ns
+            .fetch_add(move_gen_timing.scoring_ns, Ordering::Relaxed);
+        let legal_moves = core::mem::take(&mut ctx.legal_moves);
+        let legal_moves_len = legal_moves.len();
+        let mut children = Vec::with_capacity(legal_moves_len);
+        let mut local_stats = TreeStatsAccumulator::default();
+        for &mov in &legal_moves {
+            let move_timing = ctx.make_move_with_timing(mov, player);
+            local_stats.add_move_apply_timing(&move_timing);
+            let pos_hash_start = Instant::now();
+            let child_pos_hash = ctx.get_hash();
+            local_stats.hash_time_ns = checked::add_u64(
+                local_stats.hash_time_ns,
+                duration_to_ns(pos_hash_start.elapsed()),
+                "SharedTree::expand_node::hash_time_ns",
+            );
+            let child_depth = checked::add_usize(depth, 1_usize, "SharedTree::expand_node::depth");
+            let node_key = (child_pos_hash, child_depth);
+            let is_depth_limited = self.depth_limit.is_some_and(|limit| child_depth >= limit);
+            let child = ctx.get_cached_node(&node_key).unwrap_or_else(|| {
+                local_stats.node_table_lookups = checked::add_u64(
+                    local_stats.node_table_lookups,
+                    1_u64,
+                    "SharedTree::expand_node::node_table_lookups",
+                );
+                let child =
+                    self.get_or_create_child(ctx, node_key, player, depth, is_depth_limited);
+                ctx.cache_node(node_key, Arc::clone(&child));
+                child
+            });
+            let undo_start = Instant::now();
+            ctx.undo_move(mov, player);
+            local_stats.move_undo_time_ns = checked::add_u64(
+                local_stats.move_undo_time_ns,
+                duration_to_ns(undo_start.elapsed()),
+                "SharedTree::expand_node::move_undo_time_ns",
+            );
+            let proof_number = child.get_pn();
+            let disproof_number = child.get_dn();
+            children.push(ChildRef { node: child, mov });
+            if is_or_node {
+                if proof_number == 0 {
+                    break;
+                }
+            } else if disproof_number == 0 || proof_number == u64::MAX {
+                break;
+            }
+        }
+        ctx.legal_moves = legal_moves;
+        let early_cutoff = children.len() < legal_moves_len;
+        let children_len =
+            checked::usize_to_u64(children.len(), "SharedTree::expand_node::children_len");
+        if node.children.set(children).is_err() {
+            return false;
+        }
+        self.stats.merge(&local_stats);
+        self.increment_expansions();
+        if early_cutoff {
+            self.stats.early_cutoffs.fetch_add(1, Ordering::Relaxed);
+        }
+        self.stats
+            .children_generated
+            .fetch_add(children_len, Ordering::Relaxed);
+        self.stats
+            .expand_time_ns
+            .fetch_add(duration_to_ns(expand_start.elapsed()), Ordering::Relaxed);
+        true
+    }
+    fn get_or_create_child(
+        &self,
+        ctx: &ThreadLocalContext,
+        node_key: (u64, usize),
+        player: u8,
+        depth: usize,
+        is_depth_limited: bool,
+    ) -> Arc<ParallelNode> {
+        let lookup_start = Instant::now();
+        let existing_child = self.node_table.get(&node_key);
+        self.stats
+            .node_table_lookup_time_ns
+            .fetch_add(duration_to_ns(lookup_start.elapsed()), Ordering::Relaxed);
+        existing_child.map_or_else(
+            || {
+                let child_hash_start = Instant::now();
+                let child_hash = ctx.get_canonical_hash();
+                self.stats.hash_time_ns.fetch_add(
+                    duration_to_ns(child_hash_start.elapsed()),
+                    Ordering::Relaxed,
+                );
+                let child = Arc::new(ParallelNode::new(
+                    checked::opponent_player(player, "SharedTree::get_or_create_child"),
+                    checked::add_usize(depth, 1_usize, "SharedTree::get_or_create_child::depth"),
+                    child_hash,
+                    is_depth_limited,
+                ));
+                self.evaluate_node(&child, ctx);
+                let insert_start = Instant::now();
+                self.node_table.insert(node_key, Arc::clone(&child));
+                self.stats
+                    .node_table_write_time_ns
+                    .fetch_add(duration_to_ns(insert_start.elapsed()), Ordering::Relaxed);
+                self.stats.nodes_created.fetch_add(1, Ordering::Relaxed);
+                child
+            },
+            |child| {
+                self.stats.node_table_hits.fetch_add(1, Ordering::Relaxed);
+                child
+            },
+        )
+    }
+}
