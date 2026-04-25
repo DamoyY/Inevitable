@@ -1,11 +1,3 @@
-use std::{
-    collections::{HashSet, VecDeque},
-    sync::{
-        Arc,
-        atomic::{AtomicBool, Ordering},
-    },
-};
-
 use super::{
     super::{
         TreeStatsAtomic,
@@ -14,6 +6,13 @@ use super::{
     NodeTable, ShardedMap, TranspositionTable,
 };
 use crate::pns::TTEntry;
+use std::{
+    collections::{HashSet, VecDeque},
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+};
 pub struct SharedTree {
     pub root: NodeRef,
     pub transposition_table: TranspositionTable,
@@ -40,7 +39,6 @@ impl SharedTree {
             }
         }
     }
-
     #[must_use]
     pub fn new(
         root_player: u8,
@@ -57,7 +55,6 @@ impl SharedTree {
             None,
         )
     }
-
     #[must_use]
     pub fn with_tt(
         root_player: u8,
@@ -77,7 +74,6 @@ impl SharedTree {
             existing_node_table,
         )
     }
-
     #[must_use]
     pub fn with_tt_and_stop(
         root_player: u8,
@@ -104,7 +100,6 @@ impl SharedTree {
             stats,
         }
     }
-
     pub fn increase_depth_limit(&mut self, new_depth_limit: usize) {
         if let Some(current_limit) = self.depth_limit
             && new_depth_limit <= current_limit
@@ -148,23 +143,18 @@ impl SharedTree {
             self.update_node_pdn(&node);
         }
     }
-
     pub fn is_solved(&self) -> bool {
         self.solved.load(Ordering::Acquire)
     }
-
     pub fn stop_requested(&self) -> bool {
         self.stop_flag.load(Ordering::Acquire)
     }
-
     pub fn should_stop(&self) -> bool {
         self.is_solved() || self.stop_requested()
     }
-
     pub fn mark_solved(&self) {
         self.solved.store(true, Ordering::Release);
     }
-
     pub fn select_best_child(&self, node: &NodeRef) -> Option<ChildRef> {
         let children = node.children.get()?;
         let is_or_node = node.is_or_node();
@@ -179,7 +169,6 @@ impl SharedTree {
             })
             .cloned()
     }
-
     pub fn update_node_pdn(&self, node: &NodeRef) {
         let prev_proof = node.get_pn();
         let prev_disproof = node.get_dn();
@@ -257,7 +246,6 @@ impl SharedTree {
         }
         self.store_tt_if_changed(node, prev_proof, prev_disproof, prev_win_len);
     }
-
     fn store_tt_if_changed(
         &self,
         node: &NodeRef,

@@ -1,12 +1,10 @@
-use std::sync::Arc;
-
-use rand::{Rng, SeedableRng, rngs::StdRng};
-
 use super::{
     Bitboard, BitboardWorkspace, GomokuEvaluator, GomokuGameState, GomokuMoveCache, GomokuPosition,
     GomokuRules, ThreatIndex,
 };
 use crate::{config::EvaluationConfig, utils::board_index};
+use rand::{Rng, SeedableRng, rngs::StdRng};
+use std::sync::Arc;
 pub struct ZobristHasher {
     pub(crate) board_size: usize,
     pub(crate) zobrist_table: Vec<Vec<[u64; 3]>>,
@@ -17,7 +15,6 @@ impl ZobristHasher {
     pub fn new(board_size: usize) -> Self {
         Self::with_seed(board_size, 0x005F_15E5_D0FE_DF9A)
     }
-
     #[must_use]
     pub fn with_seed(board_size: usize, seed: u64) -> Self {
         let mut rng = StdRng::seed_from_u64(seed);
@@ -36,12 +33,10 @@ impl ZobristHasher {
             side_to_move_hash,
         }
     }
-
     #[must_use]
     pub fn get_hash(&self, r: usize, c: usize, piece: usize) -> u64 {
         self.zobrist_table[r][c][piece]
     }
-
     #[must_use]
     pub const fn get_symmetric_coords(&self, r: usize, c: usize) -> [(usize, usize); 8] {
         let n = self.board_size - 1;
@@ -105,12 +100,10 @@ impl GomokuPosition {
         position.rebuild_hashes(current_player);
         position
     }
-
     #[inline]
     pub(crate) const fn board_index(&self, r: usize, c: usize) -> usize {
         board_index(self.board_size, r, c)
     }
-
     pub(crate) fn rebuild_hashes(&mut self, player: u8) {
         self.hash = 0;
         for r in 0..self.board_size {
@@ -125,7 +118,6 @@ impl GomokuPosition {
             self.hash ^= self.hasher.side_to_move_hash;
         }
     }
-
     #[must_use]
     pub fn get_canonical_hash(&self) -> u64 {
         let mut hashes = [0u64; 8];
@@ -165,7 +157,6 @@ impl GomokuPosition {
         }
         hashes.iter().copied().min().unwrap_or(0)
     }
-
     #[must_use]
     pub const fn get_hash(&self) -> u64 {
         self.hash

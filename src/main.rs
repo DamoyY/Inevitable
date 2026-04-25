@@ -1,6 +1,7 @@
 use inevitable::alloc_stats::TrackingAllocator;
 #[global_allocator]
 static GLOBAL: TrackingAllocator = TrackingAllocator::new();
+use inevitable::{config::Config, ui, utils::available_memory_bytes};
 use std::{
     sync::{
         Arc,
@@ -9,9 +10,6 @@ use std::{
     thread,
     time::Duration,
 };
-
-use inevitable::{config::Config, ui, utils::available_memory_bytes};
-
 fn spawn_memory_watchdog(exit_flag: Arc<AtomicBool>, config: &Config) {
     let min_available_memory_mb = config.min_available_memory_mb;
     let min_available_memory_bytes = min_available_memory_mb.saturating_mul(1024 * 1024);
@@ -32,7 +30,6 @@ fn spawn_memory_watchdog(exit_flag: Arc<AtomicBool>, config: &Config) {
         }
     });
 }
-
 fn main() {
     let config = Config::load();
     let benchmark_mode = std::env::args().any(|arg| arg == "--benchmark" || arg == "--bench");

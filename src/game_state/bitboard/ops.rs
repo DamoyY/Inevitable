@@ -10,7 +10,6 @@ impl Bitboard {
             (1u64 << bits_in_last) - 1
         }
     }
-
     fn shift_into(&self, bits: &[u64], target: &mut Vec<u64>, n: usize, left: bool) {
         self.resize_target(target);
         if n == 0 {
@@ -41,15 +40,12 @@ impl Bitboard {
             }
         }
     }
-
     fn shift_left_into(&self, bits: &[u64], target: &mut Vec<u64>, n: usize) {
         self.shift_into(bits, target, n, true);
     }
-
     fn shift_right_into(&self, bits: &[u64], target: &mut Vec<u64>, n: usize) {
         self.shift_into(bits, target, n, false);
     }
-
     fn copy_and_clear_col(&self, source: &[u64], target: &mut Vec<u64>, col: usize) {
         self.resize_target(target);
         target.copy_from_slice(source);
@@ -58,25 +54,21 @@ impl Bitboard {
             target[word_idx] &= !mask;
         }
     }
-
     fn or_inplace(target: &mut [u64], src: &[u64]) {
         for (word, add) in target.iter_mut().zip(src.iter()) {
             *word |= add;
         }
     }
-
     pub(super) fn resize_target(&self, target: &mut Vec<u64>) {
         if target.len() != self.num_words {
             target.resize(self.num_words, 0);
         }
     }
-
     pub(super) const fn apply_mask(&self, bits: &mut [u64]) {
         if let Some(last) = bits.last_mut() {
             *last &= self.last_word_mask();
         }
     }
-
     pub fn dilate_into(
         &self,
         bb: &[u64],
@@ -111,7 +103,6 @@ impl Bitboard {
         }
         self.apply_mask(target);
     }
-
     pub fn neighbors_into(
         &self,
         bb: &[u64],

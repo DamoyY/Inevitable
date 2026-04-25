@@ -1,9 +1,8 @@
+use super::{context::ThreadLocalContext, shared_tree::SharedTree};
 use std::sync::{
     Arc, OnceLock,
     atomic::{AtomicBool, AtomicU64, Ordering},
 };
-
-use super::{context::ThreadLocalContext, shared_tree::SharedTree};
 pub type NodeRef = Arc<ParallelNode>;
 #[derive(Clone)]
 pub struct ChildRef {
@@ -40,118 +39,96 @@ impl ParallelNode {
             depth_cutoff: AtomicBool::new(false),
         }
     }
-
     #[inline]
     pub const fn is_or_node(&self) -> bool {
         self.player == 1
     }
-
     #[inline]
     pub fn is_expanded(&self) -> bool {
         self.children.get().is_some() || self.is_depth_cutoff()
     }
-
     #[inline]
     pub fn is_terminal(&self) -> bool {
         let pn = self.pn.load(Ordering::Acquire);
         let dn = self.dn.load(Ordering::Acquire);
         pn == 0 || dn == 0
     }
-
     #[inline]
     pub fn get_pn(&self) -> u64 {
         self.pn.load(Ordering::Acquire)
     }
-
     #[inline]
     pub fn get_dn(&self) -> u64 {
         self.dn.load(Ordering::Acquire)
     }
-
     #[inline]
     pub fn get_virtual_pn(&self) -> u64 {
         self.virtual_pn.load(Ordering::Acquire)
     }
-
     #[inline]
     pub fn get_virtual_dn(&self) -> u64 {
         self.virtual_dn.load(Ordering::Acquire)
     }
-
     #[inline]
     pub fn get_effective_pn(&self) -> u64 {
         self.get_pn().saturating_add(self.get_virtual_pn())
     }
-
     #[inline]
     pub fn get_effective_dn(&self) -> u64 {
         self.get_dn().saturating_add(self.get_virtual_dn())
     }
-
     #[inline]
     pub fn get_win_len(&self) -> u64 {
         self.win_len.load(Ordering::Acquire)
     }
-
     #[inline]
     pub fn is_depth_limited(&self) -> bool {
         self.is_depth_limited.load(Ordering::Acquire)
     }
-
     #[inline]
     pub fn set_is_depth_limited(&self, value: bool) {
         self.is_depth_limited.store(value, Ordering::Release);
     }
-
     #[inline]
     pub fn is_depth_cutoff(&self) -> bool {
         self.depth_cutoff.load(Ordering::Acquire)
     }
-
     #[inline]
     pub fn set_depth_cutoff(&self, value: bool) {
         self.depth_cutoff.store(value, Ordering::Release);
     }
-
     #[inline]
     pub fn try_mark_depth_cutoff(&self) -> bool {
         self.depth_cutoff
             .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
             .is_ok()
     }
-
     #[inline]
     pub fn set_pn(&self, value: u64) {
         self.pn.store(value, Ordering::Release);
     }
-
     #[inline]
     pub fn set_dn(&self, value: u64) {
         self.dn.store(value, Ordering::Release);
     }
-
     #[inline]
     pub fn set_win_len(&self, value: u64) {
         self.win_len.store(value, Ordering::Release);
     }
-
     #[inline]
     pub fn add_virtual_pressure(&self, vpn: u64, vdn: u64) {
         self.virtual_pn.fetch_add(vpn, Ordering::AcqRel);
         self.virtual_dn.fetch_add(vdn, Ordering::AcqRel);
     }
-
     #[inline]
     pub fn remove_virtual_pressure(&self, vpn: u64, vdn: u64) {
         self.virtual_pn.fetch_sub(vpn, Ordering::AcqRel);
         self.virtual_dn.fetch_sub(vdn, Ordering::AcqRel);
     }
-
     pub fn set_proven(&self) {
         self.set_pn(0);
         self.set_dn(u64::MAX);
     }
-
     pub fn set_disproven(&self) {
         self.set_pn(u64::MAX);
         self.set_dn(0);
@@ -166,7 +143,6 @@ impl Worker {
     pub const fn new(tree: Arc<SharedTree>, ctx: ThreadLocalContext) -> Self {
         Self { tree, ctx }
     }
-
     pub fn run(&mut self) {
         while !self.tree.should_stop() {
             if self.tree.root.get_pn() == u64::MAX {
@@ -184,7 +160,6 @@ impl Worker {
             }
         }
     }
-
     fn one_iteration(&mut self) {
         self.ctx.clear_path();
         let root = Arc::clone(&self.tree.root);
@@ -202,7 +177,6 @@ impl Worker {
         }
         self.backpropagate();
     }
-
     fn select(&mut self, start: NodeRef) -> Option<NodeRef> {
         let mut current = start;
         loop {
@@ -238,7 +212,6 @@ impl Worker {
             current = best_child;
         }
     }
-
     fn backpropagate(&mut self) {
         while let Some(entry) = self.ctx.pop_path() {
             self.ctx.undo_move(entry.mov, entry.player);

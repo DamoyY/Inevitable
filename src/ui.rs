@@ -1,13 +1,12 @@
-use std::sync::{
-    Arc,
-    atomic::{AtomicBool, Ordering},
-};
-
 use crate::{
     config::Config,
     game_state::{GomokuGameState, GomokuRules, ZobristHasher},
     pns::{NodeTable, ParallelSolver, SearchParams, TranspositionTable},
     utils::board_index,
+};
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
 };
 mod input;
 use input::read_player_move;
@@ -84,7 +83,6 @@ pub fn run_benchmark(exit_flag: &Arc<AtomicBool>, config: &Config) {
         avg = result.elapsed_secs
     );
 }
-
 fn benchmark_board(board_size: usize) -> Result<Vec<u8>, String> {
     if board_size != BENCHMARK_BOARD_7X7.len() {
         return Err(format!(

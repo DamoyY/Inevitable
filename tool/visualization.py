@@ -1,11 +1,13 @@
-from matplotlib.pyplot import rcParams, close, subplots, tight_layout
-from matplotlib.font_manager import fontManager, FontProperties
-from pandas import read_csv, to_numeric
+import os
+import pathlib
 from colorsys import hls_to_rgb
 from datetime import datetime
-from math import pi, atan2
+from math import atan2, pi
+
 import numpy as np
-import os
+from matplotlib.font_manager import FontProperties, fontManager
+from matplotlib.pyplot import close, rcParams, subplots, tight_layout
+from pandas import read_csv, to_numeric
 
 CSV_PATH = "log.csv"
 OUTPUT_DIR = "tool/visualization"
@@ -22,10 +24,10 @@ CJK_FONT_CANDIDATES = [
     "Arial Unicode MS",
 ]
 FALLBACK_FONTS = ["DejaVu Sans"]
-FIG_SIZE = (16, 16)
+FIG_SIZE = 16, 16
 BAR_WIDTH = 0.95
-TIME_UNIT_SCALE = 1e-6
-Y_ABS_LIMIT = (-1.5e7 * TIME_UNIT_SCALE, 1.5e7 * TIME_UNIT_SCALE)
+TIME_UNIT_SCALE = 1e-06
+Y_ABS_LIMIT = -15000000.0 * TIME_UNIT_SCALE, 15000000.0 * TIME_UNIT_SCALE
 
 
 def _srgb_to_linear(c):
@@ -45,10 +47,10 @@ def _rgb_to_oklab(rgb):
     l_ = l_val ** (1 / 3)
     m_ = m ** (1 / 3)
     s_ = s ** (1 / 3)
-    l_val = 0.2104542553 * l_ + 0.7936177850 * m_ - 0.0040720468 * s_
-    a = 1.9779984951 * l_ - 2.4285922050 * m_ + 0.4505937099 * s_
-    b = 0.0259040371 * l_ + 0.7827717662 * m_ - 0.8086757660 * s_
-    return (l_val, a, b)
+    l_val = 0.2104542553 * l_ + 0.793617785 * m_ - 0.0040720468 * s_
+    a = 1.9779984951 * l_ - 2.428592205 * m_ + 0.4505937099 * s_
+    b = 0.0259040371 * l_ + 0.7827717662 * m_ - 0.808675766 * s_
+    return l_val, a, b
 
 
 def _oklab_to_oklch(lab):
@@ -57,7 +59,7 @@ def _oklab_to_oklch(lab):
     h = atan2(b, a)
     if h < 0:
         h += 2 * pi
-    return (l_val, c, h)
+    return l_val, c, h
 
 
 def _oklch_distance(c1, c2):
@@ -79,7 +81,7 @@ def generate_distinct_colors(count):
         for lightness_value in lightness:
             for saturation_value in saturation:
                 candidates.append(
-                    hls_to_rgb(float(h), lightness_value, saturation_value)
+                    hls_to_rgb(float(h), lightness_value, saturation_value),
                 )
     oklch_values = [_oklab_to_oklch(_rgb_to_oklab(c)) for c in candidates]
     gray_oklch = _oklab_to_oklch(_rgb_to_oklab((0.5, 0.5, 0.5)))
@@ -149,7 +151,7 @@ def _load_custom_fonts():
                 font_paths.append(path)
     loaded_names = []
     for path in font_paths:
-        if not os.path.isfile(path):
+        if not pathlib.Path(path).is_file():
             continue
         try:
             fontManager.addfont(path)
@@ -170,7 +172,7 @@ def _resolve_font_families():
     if not selected:
         selected = FALLBACK_FONTS[:]
     has_cjk = any(name in CJK_FONT_CANDIDATES for name in selected) or bool(
-        custom_fonts
+        custom_fonts,
     )
     return selected, has_cjk
 
@@ -277,16 +279,22 @@ def _apply_xticks(ax, x, x_labels, use_round_depth):
     else:
         ax.set_xticks(x)
         ax.set_xticklabels(
-            ax.get_xticks(), fontsize=20, rotation=45, ha="right"
+            ax.get_xticks(),
+            fontsize=20,
+            rotation=45,
+            ha="right",
         )
 
 
 def _save_figure(fig):
     timestamp = datetime.now().strftime("%m-%d_%H-%M")
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
+    pathlib.Path(OUTPUT_DIR).mkdir(exist_ok=True, parents=True)
     svg_path = os.path.join(OUTPUT_DIR, f"{timestamp}.svg")
     fig.savefig(
-        svg_path, bbox_inches="tight", facecolor="black", edgecolor="none"
+        svg_path,
+        bbox_inches="tight",
+        facecolor="black",
+        edgecolor="none",
     )
     close(fig)
     return svg_path

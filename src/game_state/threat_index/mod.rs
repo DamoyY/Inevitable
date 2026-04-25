@@ -1,6 +1,5 @@
-use smallvec::SmallVec;
-
 use crate::utils::board_index;
+use smallvec::SmallVec;
 mod buckets;
 use buckets::PatternBuckets;
 #[derive(Clone)]
@@ -45,7 +44,6 @@ impl ThreatIndex {
         threat_index.pattern_buckets = PatternBuckets::new(win_len, threat_index.all_windows.len());
         threat_index
     }
-
     fn enumerate_windows(&mut self) {
         self.add_direction_windows(
             0..self.board_size,
@@ -68,7 +66,6 @@ impl ThreatIndex {
             &|r, c, i| (r + i, c - i),
         );
     }
-
     fn add_direction_windows<RI, CI, F>(&mut self, rows: RI, cols: CI, coord_fn: &F)
     where
         RI: Iterator<Item = usize>,
@@ -84,7 +81,6 @@ impl ThreatIndex {
             }
         }
     }
-
     fn add_window(&mut self, coords: Vec<(usize, usize)>) {
         let window_idx = self.all_windows.len();
         let Ok(window_idx_u16) = u16::try_from(window_idx) else {
@@ -97,7 +93,6 @@ impl ThreatIndex {
             self.point_to_windows_map[point_idx].push(window_idx_u16);
         }
     }
-
     pub fn initialize_from_board(&mut self, board: &[u8]) {
         let win_len = self.win_len;
         for window_idx in 0..self.all_windows.len() {
@@ -119,14 +114,12 @@ impl ThreatIndex {
             self.update_bucket_add(window_idx);
         }
     }
-
     const fn window_bucket_keys(window: &Window) -> [(u8, usize, usize); 2] {
         [
             (1, window.p1_count, window.p2_count),
             (2, window.p2_count, window.p1_count),
         ]
     }
-
     fn update_bucket_add(&mut self, window_idx: usize) {
         let window = &self.all_windows[window_idx];
         if window.p1_count > 0 && window.p2_count > 0 {
@@ -138,14 +131,12 @@ impl ThreatIndex {
         self.pattern_buckets
             .insert(keys[1].0, window_idx, keys[1].1, keys[1].2);
     }
-
     fn update_bucket_remove(&mut self, window_idx: usize) {
         let window = &self.all_windows[window_idx];
         let keys = Self::window_bucket_keys(window);
         self.pattern_buckets.remove(keys[0].0, window_idx);
         self.pattern_buckets.remove(keys[1].0, window_idx);
     }
-
     fn apply_window_update(&mut self, mov: (usize, usize), player: u8, is_move: bool) {
         let point_idx = board_index(self.board_size, mov.0, mov.1);
         let window_indices = self.point_to_windows_map[point_idx].clone();
@@ -172,15 +163,12 @@ impl ThreatIndex {
             self.update_bucket_add(window_idx);
         }
     }
-
     pub fn update_on_move(&mut self, mov: (usize, usize), player: u8) {
         self.apply_window_update(mov, player, true);
     }
-
     pub fn update_on_undo(&mut self, mov: (usize, usize), player: u8) {
         self.apply_window_update(mov, player, false);
     }
-
     pub fn get_pattern_windows(
         &self,
         player: u8,
@@ -189,7 +177,6 @@ impl ThreatIndex {
     ) -> impl Iterator<Item = usize> + '_ {
         self.pattern_buckets.iter(player, p_count, o_count)
     }
-
     const fn window_count(board_size: usize, win_len: usize) -> usize {
         if board_size < win_len {
             return 0;

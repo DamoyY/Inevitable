@@ -1,8 +1,3 @@
-use std::{
-    sync::{Arc, atomic::Ordering},
-    time::Instant,
-};
-
 use super::{SharedTree, duration_to_ns};
 use crate::{
     alloc_stats::AllocTrackingGuard,
@@ -11,6 +6,10 @@ use crate::{
         context::ThreadLocalContext,
         node::{ChildRef, NodeRef, ParallelNode},
     },
+};
+use std::{
+    sync::{Arc, atomic::Ordering},
+    time::Instant,
 };
 impl SharedTree {
     pub fn evaluate_node(&self, node: &ParallelNode, ctx: &ThreadLocalContext) {
@@ -69,7 +68,6 @@ impl SharedTree {
             .eval_time_ns
             .fetch_add(duration_to_ns(start.elapsed()), Ordering::Relaxed);
     }
-
     pub fn expand_node(&self, node: &NodeRef, ctx: &mut ThreadLocalContext) -> bool {
         if node.children.get().is_some() || node.is_depth_cutoff() {
             return false;
@@ -158,7 +156,6 @@ impl SharedTree {
             .fetch_add(duration_to_ns(expand_start.elapsed()), Ordering::Relaxed);
         true
     }
-
     fn get_or_create_child(
         &self,
         ctx: &ThreadLocalContext,

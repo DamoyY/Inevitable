@@ -1,13 +1,3 @@
-use std::{
-    collections::BTreeMap,
-    sync::{
-        Arc,
-        atomic::{AtomicBool, Ordering},
-    },
-    thread,
-    time::Instant,
-};
-
 use super::{
     super::TreeStatsSnapshot,
     BenchmarkDeepening, BenchmarkResult, BestMoveDeepening, DepthAccumulator,
@@ -18,6 +8,15 @@ use super::{
 use crate::{
     alloc_stats::AllocTrackingGuard,
     pns::{NodeTable, SharedTree, TranspositionTable, Worker, context::ThreadLocalContext},
+};
+use std::{
+    collections::BTreeMap,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+    thread,
+    time::Instant,
 };
 impl ParallelSolver {
     #[must_use]
@@ -51,7 +50,6 @@ impl ParallelSolver {
         }
         self.tree.root.get_pn() == 0
     }
-
     fn spawn_workers(&self, tree: &Arc<SharedTree>) -> Vec<thread::JoinHandle<()>> {
         (0..self.num_threads)
             .map(|thread_id| {
@@ -66,13 +64,11 @@ impl ParallelSolver {
             })
             .collect()
     }
-
     fn wait_for_workers(handles: Vec<thread::JoinHandle<()>>) {
         for handle in handles {
             let _ = handle.join();
         }
     }
-
     fn run_iterative_deepening<R, H>(
         solver: &mut Self,
         stop_flag: &Arc<AtomicBool>,
@@ -102,7 +98,6 @@ impl ParallelSolver {
             solver.increase_depth_limit(depth);
         }
     }
-
     pub fn benchmark_next_move(
         initial_board: &[u8],
         params: super::SearchParams,
@@ -163,7 +158,6 @@ impl ParallelSolver {
             node_table_size,
         })
     }
-
     #[must_use]
     pub fn find_best_move_iterative_deepening(
         initial_board: Vec<u8>,
@@ -176,7 +170,6 @@ impl ParallelSolver {
         let params = super::SearchParams::new(board_size, win_len, num_threads, evaluation);
         Self::find_best_move_with_tt(initial_board, params, verbose, None, None).0
     }
-
     #[must_use]
     pub fn find_best_move_with_tt(
         initial_board: Vec<u8>,
@@ -194,7 +187,6 @@ impl ParallelSolver {
             existing_node_table,
         )
     }
-
     #[must_use]
     pub fn find_best_move_with_tt_and_stop(
         initial_board: Vec<u8>,
@@ -216,17 +208,14 @@ impl ParallelSolver {
         let mut hooks = BestMoveDeepening { verbose };
         Self::run_iterative_deepening(&mut solver, stop_flag, depth, &mut hooks)
     }
-
     #[must_use]
     pub fn get_tt(&self) -> TranspositionTable {
         self.tree.get_tt()
     }
-
     #[must_use]
     pub fn get_node_table(&self) -> NodeTable {
         self.tree.get_node_table()
     }
-
     #[must_use]
     pub fn get_best_move(&self) -> Option<(usize, usize)> {
         let root = &self.tree.root;
@@ -257,37 +246,30 @@ impl ParallelSolver {
                 .map(|c| c.mov)
         }
     }
-
     #[must_use]
     pub fn root_pn(&self) -> u64 {
         self.tree.root.get_pn()
     }
-
     #[must_use]
     pub fn root_dn(&self) -> u64 {
         self.tree.root.get_dn()
     }
-
     #[must_use]
     pub fn root_player(&self) -> u8 {
         self.tree.root.player
     }
-
     #[must_use]
     pub fn root_win_len(&self) -> u64 {
         self.tree.root.get_win_len()
     }
-
     #[must_use]
     pub const fn game_state(&self) -> &crate::game_state::GomokuGameState {
         &self.base_game_state
     }
-
     #[must_use]
     pub const fn board_size(&self) -> usize {
         self.board_size
     }
-
     #[must_use]
     pub const fn win_len(&self) -> usize {
         self.win_len

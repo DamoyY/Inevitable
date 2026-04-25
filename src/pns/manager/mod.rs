@@ -1,9 +1,3 @@
-use std::{
-    collections::BTreeMap,
-    sync::{Arc, atomic::AtomicBool},
-    time::Instant,
-};
-
 use super::{
     TreeStatsSnapshot,
     context::ThreadLocalContext,
@@ -13,6 +7,11 @@ use crate::{
     alloc_stats,
     config::EvaluationConfig,
     game_state::{GomokuGameState, ZobristHasher},
+};
+use std::{
+    collections::BTreeMap,
+    sync::{Arc, atomic::AtomicBool},
+    time::Instant,
 };
 mod logging;
 mod solve;
@@ -75,7 +74,6 @@ impl DepthAccumulator {
         self.total_node_table_size = self.total_node_table_size.saturating_add(node_table_size);
         self.count = self.count.saturating_add(1);
     }
-
     fn average(&self) -> (TreeStatsSnapshot, f64, usize, usize) {
         let count = self.count.max(1);
         let divisor = f64::from(u32::try_from(count).unwrap_or(u32::MAX));
@@ -88,7 +86,6 @@ impl DepthAccumulator {
         (stats, elapsed_secs, tt_size, node_table_size)
     }
 }
-
 fn write_benchmark_logs(per_depth: BTreeMap<usize, DepthAccumulator>) {
     for (depth, acc) in per_depth {
         if acc.count == 0 {
@@ -128,11 +125,9 @@ impl IterativeDeepeningHooks<Option<()>> for BenchmarkDeepening<'_> {
     fn on_stop(&mut self, _solver: &mut ParallelSolver) -> Option<()> {
         None
     }
-
     fn solve(&mut self, solver: &mut ParallelSolver) -> bool {
         solver.solve(false)
     }
-
     fn after_solve(&mut self, depth: usize, solver: &mut ParallelSolver, _found: bool) {
         let elapsed = self.start.elapsed().as_secs_f64();
         let current_stats = solver.tree.stats_snapshot();
@@ -147,7 +142,6 @@ impl IterativeDeepeningHooks<Option<()>> for BenchmarkDeepening<'_> {
         self.last_tt_size = tt_size;
         self.last_node_table_size = node_table_size;
     }
-
     fn on_found(&mut self, _depth: usize, solver: &mut ParallelSolver) -> Option<()> {
         solver.get_best_move()?;
         *self.total_elapsed_secs += self.prev_elapsed;
@@ -170,17 +164,14 @@ impl IterativeDeepeningHooks<(Option<(usize, usize)>, TranspositionTable, NodeTa
     ) -> (Option<(usize, usize)>, TranspositionTable, NodeTable) {
         (None, solver.get_tt(), solver.get_node_table())
     }
-
     fn before_solve(&mut self, depth: usize, _solver: &mut ParallelSolver) {
         if self.verbose {
             println!("尝试搜索深度 D={depth}", depth = format_sci_usize(depth));
         }
     }
-
     fn solve(&mut self, solver: &mut ParallelSolver) -> bool {
         solver.solve(self.verbose)
     }
-
     fn on_found(
         &mut self,
         _depth: usize,
@@ -211,7 +202,6 @@ impl ParallelSolver {
         let params = SearchParams::new(board_size, win_len, num_threads, evaluation);
         Self::with_tt(initial_board, params, depth_limit, None, None)
     }
-
     #[must_use]
     pub fn with_tt(
         initial_board: Vec<u8>,
@@ -229,7 +219,6 @@ impl ParallelSolver {
             existing_node_table,
         )
     }
-
     #[must_use]
     pub fn with_tt_and_stop(
         initial_board: Vec<u8>,
@@ -270,11 +259,9 @@ impl ParallelSolver {
             win_len: params.win_len,
         }
     }
-
     fn clone_game_state(&self) -> GomokuGameState {
         self.base_game_state.clone()
     }
-
     fn current_turn(&self) -> usize {
         self.base_game_state
             .position
@@ -282,7 +269,6 @@ impl ParallelSolver {
             .iter()
             .fold(0usize, |count, &cell| count + usize::from(cell == 2))
     }
-
     pub fn increase_depth_limit(&mut self, new_limit: usize) {
         if let Some(tree) = Arc::get_mut(&mut self.tree) {
             tree.increase_depth_limit(new_limit);

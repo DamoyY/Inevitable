@@ -1,37 +1,19 @@
 #[macro_export]
-macro_rules! for_each_move_apply_timing {
-    ($macro:ident) => {
-        $macro! {
-            board_update_ns => board_update_time_ns,
-            bitboard_update_ns => bitboard_update_time_ns,
-            threat_index_update_ns => threat_index_update_time_ns,
-            candidate_remove_ns => candidate_remove_time_ns,
-            candidate_neighbor_ns => candidate_neighbor_time_ns,
-            candidate_insert_ns => candidate_insert_time_ns,
-            candidate_newly_added_ns => candidate_newly_added_time_ns,
-            candidate_history_ns => candidate_history_time_ns,
-            hash_update_ns => hash_update_time_ns,
-        }
-    };
-}
+macro_rules ! for_each_move_apply_timing { ($ macro : ident) => { $ macro ! { board_update_ns => board_update_time_ns , bitboard_update_ns => bitboard_update_time_ns , threat_index_update_ns => threat_index_update_time_ns , candidate_remove_ns => candidate_remove_time_ns , candidate_neighbor_ns => candidate_neighbor_time_ns , candidate_insert_ns => candidate_insert_time_ns , candidate_newly_added_ns => candidate_newly_added_time_ns , candidate_history_ns => candidate_history_time_ns , hash_update_ns => hash_update_time_ns , } } ; }
 pub mod alloc_stats {
+    use crate::utils::duration_to_ns;
+    use mimalloc::MiMalloc;
     use std::{
         alloc::{GlobalAlloc, Layout},
         cell::Cell,
         sync::atomic::{AtomicU64, Ordering},
         time::{Duration, Instant},
     };
-
-    use mimalloc::MiMalloc;
-
-    use crate::utils::duration_to_ns;
     static ALLOC_TIME_NS: AtomicU64 = AtomicU64::new(0);
     static DEALLOC_TIME_NS: AtomicU64 = AtomicU64::new(0);
     static REALLOC_TIME_NS: AtomicU64 = AtomicU64::new(0);
     static ALLOC_ZEROED_TIME_NS: AtomicU64 = AtomicU64::new(0);
-    thread_local! {
-        static ALLOC_TRACKING_DEPTH: Cell<u32> = const { Cell::new(0) };
-    }
+    thread_local! { static ALLOC_TRACKING_DEPTH : Cell < u32 > = const { Cell :: new (0) } ; }
     #[must_use]
     pub struct AllocTrackingGuard;
     impl AllocTrackingGuard {
@@ -118,19 +100,16 @@ pub mod alloc_stats {
         unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
             track_alloc_time(&ALLOC_TIME_NS, || unsafe { self.inner.alloc(layout) })
         }
-
         unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
             track_alloc_time(&DEALLOC_TIME_NS, || unsafe {
                 self.inner.dealloc(ptr, layout);
             });
         }
-
         unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
             track_alloc_time(&REALLOC_TIME_NS, || unsafe {
                 self.inner.realloc(ptr, layout, new_size)
             })
         }
-
         unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
             track_alloc_time(&ALLOC_ZEROED_TIME_NS, || unsafe {
                 self.inner.alloc_zeroed(layout)
@@ -139,9 +118,8 @@ pub mod alloc_stats {
     }
 }
 pub mod config {
-    use std::{fs, process, thread};
-
     use serde::Deserialize;
+    use std::{fs, process, thread};
     #[derive(Debug, Deserialize, Clone, Copy)]
     pub struct EvaluationConfig {
         pub proximity_kernel_size: usize,
@@ -169,11 +147,9 @@ pub mod config {
         #[serde(default = "default_memory_check_interval_ms")]
         pub memory_check_interval_ms: u64,
     }
-
     const fn default_min_available_memory_mb() -> u64 {
         1024
     }
-
     const fn default_memory_check_interval_ms() -> u64 {
         500
     }

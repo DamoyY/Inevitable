@@ -1,6 +1,5 @@
 use super::{Coord, GomokuEvaluator, GomokuPosition};
 use crate::config::EvaluationConfig;
-
 impl GomokuEvaluator {
     #[must_use]
     pub fn new(board_size: usize, config: EvaluationConfig) -> Self {
@@ -12,7 +11,6 @@ impl GomokuEvaluator {
             positional_bonus,
         }
     }
-
     fn init_proximity_kernel(config: EvaluationConfig) -> Vec<Vec<f32>> {
         let k_size = config.proximity_kernel_size;
         let k_center = k_size / 2;
@@ -26,7 +24,6 @@ impl GomokuEvaluator {
         }
         proximity_kernel
     }
-
     fn init_positional_bonus(board_size: usize, config: EvaluationConfig) -> Vec<f32> {
         let center = board_size / 2;
         let mut positional_bonus = vec![0.0f32; board_size.saturating_mul(board_size)];
@@ -42,7 +39,6 @@ impl GomokuEvaluator {
         }
         positional_bonus
     }
-
     fn add_proximity_scores(
         &self,
         position: &GomokuPosition,
@@ -59,7 +55,6 @@ impl GomokuEvaluator {
             }
         }
     }
-
     pub(crate) fn rebuild_proximity_scores(
         &self,
         position: &GomokuPosition,
@@ -73,7 +68,6 @@ impl GomokuEvaluator {
         target.fill(0.0);
         self.add_proximity_scores(position, player, target);
     }
-
     pub(crate) fn apply_proximity_delta(
         &self,
         position: &GomokuPosition,
@@ -88,7 +82,6 @@ impl GomokuEvaluator {
         let scale = self.config.proximity_scale * delta;
         self.apply_proximity_kernel_scaled(position.board_size, mov, scale, target);
     }
-
     fn apply_proximity_kernel_scaled(
         &self,
         board_size: usize,
@@ -144,7 +137,6 @@ impl GomokuEvaluator {
             }
         }
     }
-
     pub(crate) fn score_moves_into(
         &self,
         position: &GomokuPosition,
@@ -162,7 +154,6 @@ impl GomokuEvaluator {
             scored_moves,
         );
     }
-
     pub(crate) fn score_moves_into_with_proximity(
         &self,
         position: &GomokuPosition,

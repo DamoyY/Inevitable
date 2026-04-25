@@ -25,7 +25,6 @@ impl PatternBuckets {
             nodes: Vec::new(),
         }
     }
-
     pub(super) fn new(win_len: usize, window_count: usize) -> Self {
         let bucket_count = 2 * (win_len + 1) * (win_len + 1);
         let buckets = vec![Bucket { head: NONE_INDEX }; bucket_count];
@@ -44,7 +43,6 @@ impl PatternBuckets {
             nodes,
         }
     }
-
     pub(super) fn reset(&mut self) {
         for bucket in &mut self.buckets {
             bucket.head = NONE_INDEX;
@@ -55,17 +53,14 @@ impl PatternBuckets {
             node.bucket = NONE_INDEX;
         }
     }
-
     const fn bucket_index(&self, player: u8, p_count: usize, o_count: usize) -> usize {
         let player_idx = (player - 1) as usize;
         (player_idx * (self.win_len + 1) + p_count) * (self.win_len + 1) + o_count
     }
-
     const fn node_index(&self, player: u8, window_idx: usize) -> usize {
         let player_idx = (player - 1) as usize;
         player_idx * self.window_count + window_idx
     }
-
     pub(super) fn insert(&mut self, player: u8, window_idx: usize, p_count: usize, o_count: usize) {
         let bucket_idx = self.bucket_index(player, p_count, o_count);
         let node_idx = self.node_index(player, window_idx);
@@ -78,7 +73,6 @@ impl PatternBuckets {
         }
         self.buckets[bucket_idx].head = node_idx;
     }
-
     pub(super) fn remove(&mut self, player: u8, window_idx: usize) {
         let node_idx = self.node_index(player, window_idx);
         let bucket_idx = self.nodes[node_idx].bucket;
@@ -99,13 +93,7 @@ impl PatternBuckets {
         self.nodes[node_idx].next = NONE_INDEX;
         self.nodes[node_idx].bucket = NONE_INDEX;
     }
-
-    pub(super) fn iter(
-        &self,
-        player: u8,
-        p_count: usize,
-        o_count: usize,
-    ) -> PatternBucketIter<'_> {
+    pub(super) fn iter(&self, player: u8, p_count: usize, o_count: usize) -> PatternBucketIter<'_> {
         let bucket_idx = self.bucket_index(player, p_count, o_count);
         PatternBucketIter {
             current: self.buckets[bucket_idx].head,
@@ -121,7 +109,6 @@ pub(super) struct PatternBucketIter<'a> {
 }
 impl Iterator for PatternBucketIter<'_> {
     type Item = usize;
-
     fn next(&mut self) -> Option<Self::Item> {
         if self.current == NONE_INDEX {
             return None;

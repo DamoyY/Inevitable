@@ -1,12 +1,10 @@
-use std::time::Instant;
-
 use super::{
     Bitboard, BitboardWorkspace, Coord, GomokuEvaluator, GomokuMoveCache, GomokuPosition,
     GomokuRules, MoveApplyTiming, MoveGenBuffers, MoveGenTiming, record_duration_add_ns,
     record_duration_ns,
 };
 use crate::utils::duration_to_ns;
-
+use std::time::Instant;
 impl GomokuRules {
     pub(crate) fn rebuild_candidate_moves(
         position: &GomokuPosition,
@@ -35,7 +33,6 @@ impl GomokuRules {
         }
         cache.candidate_moves.copy_from_slice(neighbors);
     }
-
     pub fn check_win(position: &GomokuPosition, player: u8) -> bool {
         position
             .threat_index
@@ -43,7 +40,6 @@ impl GomokuRules {
             .next()
             .is_some()
     }
-
     fn collect_forcing_moves_bits<I>(
         position: &GomokuPosition,
         window_indices: I,
@@ -65,7 +61,6 @@ impl GomokuRules {
             }
         }
     }
-
     pub fn make_move(
         position: &mut GomokuPosition,
         cache: &mut GomokuMoveCache,
@@ -74,7 +69,6 @@ impl GomokuRules {
     ) {
         let _ = Self::make_move_with_timing(position, cache, mov, player);
     }
-
     pub fn make_move_with_timing(
         position: &mut GomokuPosition,
         cache: &mut GomokuMoveCache,
@@ -139,7 +133,6 @@ impl GomokuRules {
         });
         timing
     }
-
     pub fn undo_move(position: &mut GomokuPosition, cache: &mut GomokuMoveCache, mov: Coord) {
         let Some((undone_move, added_by_this_move)) = cache.candidate_move_history.pop() else {
             return;
@@ -163,7 +156,6 @@ impl GomokuRules {
         position.hash ^= position.hasher.side_to_move_hash;
         position.hash ^= position.hasher.get_hash(r, c, player as usize);
     }
-
     pub fn get_legal_moves_into(
         position: &GomokuPosition,
         evaluator: &GomokuEvaluator,

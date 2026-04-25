@@ -1,35 +1,19 @@
-use std::{sync::Arc, time::Instant};
-
-use smallvec::SmallVec;
-
 use crate::config::EvaluationConfig;
 use crate::utils::duration_to_ns;
+use smallvec::SmallVec;
+use std::{sync::Arc, time::Instant};
 mod bitboard;
 mod evaluation;
 mod moves;
 mod state;
 mod threat_index;
 pub use bitboard::{Bitboard, BitboardWorkspace};
-pub use threat_index::ThreatIndex;
 pub use state::ZobristHasher;
+pub use threat_index::ThreatIndex;
 pub type Coord = (usize, usize);
 pub type MoveHistory = Vec<(Coord, SmallVec<[u64; 8]>)>;
 pub type ForcingMoves = (Vec<Coord>, Vec<Coord>);
-macro_rules! define_move_apply_timing {
-    ( $( $field:ident => $stat_field:ident ),* $(,)? ) => {
-        pub struct MoveApplyTiming {
-            $(pub $field: u64,)*
-        }
-        impl MoveApplyTiming {
-            #[must_use]
-            pub const fn zero() -> Self {
-                Self {
-                    $($field: 0,)*
-                }
-            }
-        }
-    };
-}
+macro_rules ! define_move_apply_timing { ($ ($ field : ident => $ stat_field : ident) ,* $ (,) ?) => { pub struct MoveApplyTiming { $ (pub $ field : u64 ,) * } impl MoveApplyTiming { # [must_use] pub const fn zero () -> Self { Self { $ ($ field : 0 ,) * } } } } ; }
 crate::for_each_move_apply_timing!(define_move_apply_timing);
 #[derive(Clone, Copy, Default)]
 pub struct MoveGenTiming {
@@ -48,7 +32,6 @@ fn record_duration_ns<F: FnOnce()>(field: &mut u64, f: F) {
     f();
     *field = duration_to_ns(start.elapsed());
 }
-
 fn record_duration_add_ns<F: FnOnce()>(field: &mut u64, f: F) {
     let start = Instant::now();
     f();
@@ -59,12 +42,10 @@ impl GomokuRules {
     fn sort_scored_moves(scored_moves: &mut [(Coord, f32)]) {
         scored_moves.sort_unstable_by(|a, b| b.1.total_cmp(&a.1));
     }
-
     fn fill_moves_from_scored(moves: &mut Vec<Coord>, scored_moves: &[(Coord, f32)]) {
         moves.clear();
         moves.extend(scored_moves.iter().map(|(coord, _)| *coord));
     }
-
     fn score_and_sort_moves_in_place(
         evaluator: &GomokuEvaluator,
         position: &GomokuPosition,
@@ -77,7 +58,6 @@ impl GomokuRules {
         Self::sort_scored_moves(scored_moves);
         Self::fill_moves_from_scored(moves, scored_moves);
     }
-
     fn score_and_sort_moves_in_place_with_proximity(
         evaluator: &GomokuEvaluator,
         position: &GomokuPosition,

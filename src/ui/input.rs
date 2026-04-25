@@ -1,11 +1,10 @@
+use crate::utils::board_index;
 use std::{
     io::{self, Write},
     sync::{atomic::AtomicBool, mpsc},
     thread,
     time::Duration,
 };
-
-use crate::utils::board_index;
 pub(super) fn read_player_move(
     board: &[u8],
     board_size: usize,

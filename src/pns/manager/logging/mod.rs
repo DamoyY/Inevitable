@@ -1,3 +1,7 @@
+use super::{
+    super::{TimingStats, TreeStatsSnapshot, stats_def::to_f64},
+    SharedTree,
+};
 use std::{
     fs::{File, OpenOptions},
     io::{self, BufWriter, Write},
@@ -5,11 +9,6 @@ use std::{
         Mutex,
         atomic::{AtomicBool, Ordering},
     },
-};
-
-use super::{
-    super::{TimingStats, TreeStatsSnapshot, stats_def::to_f64},
-    SharedTree,
 };
 const LOG_FILE_NAME: &str = "log.csv";
 static LOG_FILE_TRUNCATED: AtomicBool = AtomicBool::new(false);

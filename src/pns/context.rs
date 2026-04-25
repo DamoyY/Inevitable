@@ -1,11 +1,9 @@
-use std::collections::VecDeque;
-
-use hashbrown::HashMap;
-
 use super::node::NodeRef;
 use crate::game_state::{
     BitboardWorkspace, GomokuGameState, GomokuRules, MoveApplyTiming, MoveGenBuffers, MoveGenTiming,
 };
+use hashbrown::HashMap;
+use std::collections::VecDeque;
 const NODE_CACHE_CAPACITY: usize = 1024;
 type NodeKey = (u64, usize);
 struct LocalNodeCache {
@@ -21,13 +19,11 @@ impl LocalNodeCache {
             order: VecDeque::with_capacity(capacity),
         }
     }
-
     fn get(&mut self, key: &NodeKey) -> Option<NodeRef> {
         let node = self.entries.get(key).cloned()?;
         self.touch(key);
         Some(node)
     }
-
     fn insert(&mut self, key: NodeKey, node: NodeRef) {
         if self.capacity == 0 {
             return;
@@ -45,7 +41,6 @@ impl LocalNodeCache {
         self.order.push_back(key);
         self.entries.insert(key, node);
     }
-
     fn touch(&mut self, key: &NodeKey) {
         if let Some(pos) = self.order.iter().position(|item| item == key) {
             self.order.remove(pos);
@@ -101,7 +96,6 @@ impl ThreadLocalContext {
             node_cache: LocalNodeCache::new(NODE_CACHE_CAPACITY),
         }
     }
-
     pub fn make_move(&mut self, mov: (usize, usize), player: u8) {
         GomokuRules::make_move(
             &mut self.game_state.position,
@@ -111,7 +105,6 @@ impl ThreadLocalContext {
         );
         self.update_proximity_scores(mov, player, 1.0);
     }
-
     pub fn make_move_with_timing(&mut self, mov: (usize, usize), player: u8) -> MoveApplyTiming {
         let timing = GomokuRules::make_move_with_timing(
             &mut self.game_state.position,
@@ -122,7 +115,6 @@ impl ThreadLocalContext {
         self.update_proximity_scores(mov, player, 1.0);
         timing
     }
-
     pub fn undo_move(&mut self, mov: (usize, usize), player: u8) {
         self.update_proximity_scores(mov, player, -1.0);
         GomokuRules::undo_move(
@@ -131,7 +123,6 @@ impl ThreadLocalContext {
             mov,
         );
     }
-
     pub fn push_path(
         &mut self,
         node: NodeRef,
@@ -148,27 +139,21 @@ impl ThreadLocalContext {
             virtual_dn_added: vdn,
         });
     }
-
     pub fn pop_path(&mut self) -> Option<PathEntry> {
         self.path_stack.pop()
     }
-
     pub fn clear_path(&mut self) {
         self.path_stack.clear();
     }
-
     pub fn check_win(&self, player: u8) -> bool {
         GomokuRules::check_win(&self.game_state.position, player)
     }
-
     pub fn get_canonical_hash(&self) -> u64 {
         self.game_state.position.get_canonical_hash()
     }
-
     pub const fn get_hash(&self) -> u64 {
         self.game_state.position.get_hash()
     }
-
     pub fn refresh_legal_moves(&mut self, player: u8) -> MoveGenTiming {
         let board_cells = self
             .game_state
@@ -192,15 +177,12 @@ impl ThreadLocalContext {
             &mut buffers,
         )
     }
-
     pub fn get_cached_node(&mut self, key: &(u64, usize)) -> Option<NodeRef> {
         self.node_cache.get(key)
     }
-
     pub fn cache_node(&mut self, key: (u64, usize), node: NodeRef) {
         self.node_cache.insert(key, node);
     }
-
     fn update_proximity_scores(&mut self, mov: (usize, usize), player: u8, delta: f32) {
         let board_cells = self
             .game_state
