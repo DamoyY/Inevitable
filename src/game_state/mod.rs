@@ -13,7 +13,7 @@ pub use threat_index::ThreatIndex;
 pub type Coord = (usize, usize);
 pub type MoveHistory = Vec<(Coord, SmallVec<[u64; 8]>)>;
 pub type ForcingMoves = (Vec<Coord>, Vec<Coord>);
-macro_rules ! define_move_apply_timing { ($ ($ field : ident => $ stat_field : ident) ,* $ (,) ?) => { pub struct MoveApplyTiming { $ (pub $ field : u64 ,) * } impl MoveApplyTiming { # [must_use] pub const fn zero () -> Self { Self { $ ($ field : 0 ,) * } } } } ; }
+macro_rules ! define_move_apply_timing { ($ ($ field : ident => $ stat_field : ident) ,* $ (,) ?) => { pub struct MoveApplyTiming { $ (pub $ field : u64 ,) * } impl MoveApplyTiming { # [inline] # [must_use] pub const fn zero () -> Self { Self { $ ($ field : 0 ,) * } } } } ; }
 crate::for_each_move_apply_timing!(define_move_apply_timing);
 #[derive(Clone, Copy, Default)]
 pub struct MoveGenTiming {

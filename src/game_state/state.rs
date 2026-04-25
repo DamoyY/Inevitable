@@ -11,10 +11,12 @@ pub struct ZobristHasher {
     pub side_to_move_hash: u64,
 }
 impl ZobristHasher {
+    #[inline]
     #[must_use]
     pub fn new(board_size: usize) -> Self {
         Self::with_seed(board_size, 0x005F_15E5_D0FE_DF9A)
     }
+    #[inline]
     #[must_use]
     pub fn with_seed(board_size: usize, seed: u64) -> Self {
         let mut rng = StdRng::seed_from_u64(seed);
@@ -33,10 +35,12 @@ impl ZobristHasher {
             side_to_move_hash,
         }
     }
+    #[inline]
     #[must_use]
     pub fn get_hash(&self, r: usize, c: usize, piece: usize) -> u64 {
         self.zobrist_table[r][c][piece]
     }
+    #[inline]
     #[must_use]
     pub const fn get_symmetric_coords(&self, r: usize, c: usize) -> [(usize, usize); 8] {
         let n = self.board_size - 1;
@@ -53,6 +57,7 @@ impl ZobristHasher {
     }
 }
 impl GomokuGameState {
+    #[inline]
     #[must_use]
     pub fn new(
         initial_board: Vec<u8>,
@@ -77,6 +82,7 @@ impl GomokuGameState {
     }
 }
 impl GomokuPosition {
+    #[inline]
     #[must_use]
     pub fn new(
         initial_board: Vec<u8>,
@@ -118,6 +124,7 @@ impl GomokuPosition {
             self.hash ^= self.hasher.side_to_move_hash;
         }
     }
+    #[inline]
     #[must_use]
     pub fn get_canonical_hash(&self) -> u64 {
         let mut hashes = [0u64; 8];
@@ -157,6 +164,7 @@ impl GomokuPosition {
         }
         hashes.iter().copied().min().unwrap_or(0)
     }
+    #[inline]
     #[must_use]
     pub const fn get_hash(&self) -> u64 {
         self.hash

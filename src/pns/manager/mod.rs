@@ -31,6 +31,7 @@ pub struct SearchParams {
     pub evaluation: EvaluationConfig,
 }
 impl SearchParams {
+    #[inline]
     #[must_use]
     pub const fn new(
         board_size: usize,
@@ -190,6 +191,7 @@ impl IterativeDeepeningHooks<(Option<(usize, usize)>, TranspositionTable, NodeTa
     }
 }
 impl ParallelSolver {
+    #[inline]
     #[must_use]
     pub fn new(
         initial_board: Vec<u8>,
@@ -202,6 +204,7 @@ impl ParallelSolver {
         let params = SearchParams::new(board_size, win_len, num_threads, evaluation);
         Self::with_tt(initial_board, params, depth_limit, None, None)
     }
+    #[inline]
     #[must_use]
     pub fn with_tt(
         initial_board: Vec<u8>,
@@ -219,6 +222,7 @@ impl ParallelSolver {
             existing_node_table,
         )
     }
+    #[inline]
     #[must_use]
     pub fn with_tt_and_stop(
         initial_board: Vec<u8>,
@@ -269,6 +273,7 @@ impl ParallelSolver {
             .iter()
             .fold(0usize, |count, &cell| count + usize::from(cell == 2))
     }
+    #[inline]
     pub fn increase_depth_limit(&mut self, new_limit: usize) {
         if let Some(tree) = Arc::get_mut(&mut self.tree) {
             tree.increase_depth_limit(new_limit);

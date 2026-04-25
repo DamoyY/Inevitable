@@ -13,6 +13,7 @@ use input::read_player_move;
 const BENCHMARK_BOARD_7X7: [&str; 7] = [
     ".......", ".......", "..O....", "...X...", ".......", ".......", ".......",
 ];
+#[inline]
 pub fn print_board(board: &[u8], board_size: usize) {
     print!("  ");
     for i in 0..board_size {
@@ -33,6 +34,7 @@ pub fn print_board(board: &[u8], board_size: usize) {
         println!();
     }
 }
+#[inline]
 pub fn run_benchmark(exit_flag: &Arc<AtomicBool>, config: &Config) {
     const BENCHMARK_RUNS: usize = 3;
     if config.board_size != 7 || config.win_len != 5 {
@@ -111,11 +113,12 @@ fn benchmark_board(board_size: usize) -> Result<Vec<u8>, String> {
     }
     Ok(board)
 }
+#[inline]
 pub fn play_game(exit_flag: &Arc<AtomicBool>, config: &Config) {
     print_intro(config);
     let board_size = config.board_size;
-    let mut board = vec![0u8; board_size.saturating_mul(board_size)];
-    let mut current_player = 1u8;
+    let mut board = vec![0_u8; board_size.saturating_mul(board_size)];
+    let mut current_player = 1_u8;
     let mut tt: Option<TranspositionTable> = None;
     let mut node_table: NodeTable = NodeTable::default();
     loop {

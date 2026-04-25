@@ -17,6 +17,7 @@ pub mod alloc_stats {
     #[must_use]
     pub struct AllocTrackingGuard;
     impl AllocTrackingGuard {
+        #[inline]
         pub fn new() -> Self {
             ALLOC_TRACKING_DEPTH.with(|depth| {
                 depth.set(depth.get().saturating_add(1));
@@ -25,17 +26,20 @@ pub mod alloc_stats {
         }
     }
     impl Default for AllocTrackingGuard {
+        #[inline]
         fn default() -> Self {
             Self::new()
         }
     }
     impl Drop for AllocTrackingGuard {
+        #[inline]
         fn drop(&mut self) {
             ALLOC_TRACKING_DEPTH.with(|depth| {
                 depth.set(depth.get().saturating_sub(1));
             });
         }
     }
+    #[inline]
     pub fn reset_alloc_timing_ns() {
         ALLOC_TIME_NS.store(0, Ordering::Relaxed);
         DEALLOC_TIME_NS.store(0, Ordering::Relaxed);
@@ -50,6 +54,7 @@ pub mod alloc_stats {
         pub alloc_zeroed_ns: u64,
     }
     impl AllocTimingSnapshot {
+        #[inline]
         #[must_use]
         pub const fn total_ns(self) -> u64 {
             self.alloc_ns
@@ -58,6 +63,7 @@ pub mod alloc_stats {
                 .saturating_add(self.alloc_zeroed_ns)
         }
     }
+    #[inline]
     pub fn alloc_timing_snapshot() -> AllocTimingSnapshot {
         AllocTimingSnapshot {
             alloc_ns: ALLOC_TIME_NS.load(Ordering::Relaxed),
@@ -87,29 +93,35 @@ pub mod alloc_stats {
         inner: MiMalloc,
     }
     impl TrackingAllocator {
+        #[inline]
         pub const fn new() -> Self {
             Self { inner: MiMalloc }
         }
     }
     impl Default for TrackingAllocator {
+        #[inline]
         fn default() -> Self {
             Self::new()
         }
     }
     unsafe impl GlobalAlloc for TrackingAllocator {
+        #[inline]
         unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
             track_alloc_time(&ALLOC_TIME_NS, || unsafe { self.inner.alloc(layout) })
         }
+        #[inline]
         unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
             track_alloc_time(&DEALLOC_TIME_NS, || unsafe {
                 self.inner.dealloc(ptr, layout);
             });
         }
+        #[inline]
         unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
             track_alloc_time(&REALLOC_TIME_NS, || unsafe {
                 self.inner.realloc(ptr, layout, new_size)
             })
         }
+        #[inline]
         unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
             track_alloc_time(&ALLOC_ZEROED_TIME_NS, || unsafe {
                 self.inner.alloc_zeroed(layout)
@@ -154,6 +166,7 @@ pub mod config {
         500
     }
     impl Config {
+        #[inline]
         pub fn load() -> Self {
             let config_str = fs::read_to_string("config.yaml").unwrap_or_else(|err| {
                 eprintln!("无法读取 config.yaml: {err}");
@@ -165,7 +178,7 @@ pub mod config {
             });
             if config.num_threads == 0 {
                 config.num_threads =
-                    thread::available_parallelism().map_or(4, std::num::NonZero::get);
+                    thread::available_parallelism().map_or(4, core::num::NonZero::get);
             }
             config
         }
@@ -175,7 +188,7 @@ pub mod game_state;
 pub mod pns;
 pub mod ui;
 pub mod utils {
-    use std::time::Duration;
+    use core::time::Duration;
     #[inline]
     #[must_use]
     pub const fn board_index(board_size: usize, r: usize, c: usize) -> usize {
@@ -202,7 +215,7 @@ pub mod utils {
     #[cfg(target_os = "windows")]
     impl Default for MemoryStatusEx {
         fn default() -> Self {
-            unsafe { std::mem::zeroed() }
+            unsafe { core::mem::zeroed() }
         }
     }
     #[cfg(target_os = "windows")]
@@ -211,15 +224,16 @@ pub mod utils {
         fn GlobalMemoryStatusEx(lpBuffer: *mut MemoryStatusEx) -> i32;
     }
     #[cfg(target_os = "windows")]
+    #[inline]
     #[must_use]
     pub fn available_memory_bytes() -> Option<u64> {
-        let dw_length = u32::try_from(std::mem::size_of::<MemoryStatusEx>()).ok()?;
+        let dw_length = u32::try_from(core::mem::size_of::<MemoryStatusEx>()).ok()?;
         let mut status = MemoryStatusEx {
             dw_length,
             ..MemoryStatusEx::default()
         };
         let ok = unsafe { GlobalMemoryStatusEx(&raw mut status) };
-        if ok == 0 {
+        if ok == 0_i32 {
             return None;
         }
         Some(status.ull_avail_phys)

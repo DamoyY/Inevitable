@@ -12,6 +12,7 @@ use std::{
     time::Instant,
 };
 impl SharedTree {
+    #[inline]
     pub fn evaluate_node(&self, node: &ParallelNode, ctx: &ThreadLocalContext) {
         let start = Instant::now();
         self.stats.eval_calls.fetch_add(1, Ordering::Relaxed);
@@ -68,6 +69,7 @@ impl SharedTree {
             .eval_time_ns
             .fetch_add(duration_to_ns(start.elapsed()), Ordering::Relaxed);
     }
+    #[inline]
     pub fn expand_node(&self, node: &NodeRef, ctx: &mut ThreadLocalContext) -> bool {
         if node.children.get().is_some() || node.is_depth_cutoff() {
             return false;
@@ -100,7 +102,7 @@ impl SharedTree {
         self.stats
             .move_gen_scoring_time_ns
             .fetch_add(move_gen_timing.scoring_ns, Ordering::Relaxed);
-        let legal_moves = std::mem::take(&mut ctx.legal_moves);
+        let legal_moves = core::mem::take(&mut ctx.legal_moves);
         let legal_moves_len = legal_moves.len();
         let mut children = Vec::with_capacity(legal_moves_len);
         let mut local_stats = TreeStatsAccumulator::default();

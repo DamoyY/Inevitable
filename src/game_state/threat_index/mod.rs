@@ -29,6 +29,7 @@ pub struct ThreatIndex {
     pattern_buckets: PatternBuckets,
 }
 impl ThreatIndex {
+    #[inline]
     #[must_use]
     pub fn new(board_size: usize, win_len: usize) -> Self {
         let total_windows = Self::window_count(board_size, win_len);
@@ -93,6 +94,7 @@ impl ThreatIndex {
             self.point_to_windows_map[point_idx].push(window_idx_u16);
         }
     }
+    #[inline]
     pub fn initialize_from_board(&mut self, board: &[u8]) {
         let win_len = self.win_len;
         for window_idx in 0..self.all_windows.len() {
@@ -163,12 +165,15 @@ impl ThreatIndex {
             self.update_bucket_add(window_idx);
         }
     }
+    #[inline]
     pub fn update_on_move(&mut self, mov: (usize, usize), player: u8) {
         self.apply_window_update(mov, player, true);
     }
+    #[inline]
     pub fn update_on_undo(&mut self, mov: (usize, usize), player: u8) {
         self.apply_window_update(mov, player, false);
     }
+    #[inline]
     pub fn get_pattern_windows(
         &self,
         player: u8,

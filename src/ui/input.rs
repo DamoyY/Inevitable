@@ -61,7 +61,7 @@ fn read_line_with_exit(exit_flag: &AtomicBool) -> Result<String, InputError> {
         let _ = tx.send(result);
     });
     loop {
-        if exit_flag.load(std::sync::atomic::Ordering::SeqCst) {
+        if exit_flag.load(core::sync::atomic::Ordering::SeqCst) {
             return Err(InputError::Exit);
         }
         match rx.recv_timeout(Duration::from_millis(100)) {

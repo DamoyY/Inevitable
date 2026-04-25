@@ -19,17 +19,20 @@ type ScratchPads<'a> = (
     &'a mut Vec<u64>,
 );
 impl BitboardWorkspace {
+    #[inline]
     #[must_use]
     pub fn new(num_words: usize) -> Self {
-        let scratch_pad = std::array::from_fn(|_| vec![0; num_words]);
+        let scratch_pad = core::array::from_fn(|_| vec![0; num_words]);
         Self { scratch_pad }
     }
+    #[inline]
     pub const fn pads_mut(&mut self) -> ScratchPads<'_> {
         let [pad0, pad1, pad2, pad3, pad4] = &mut self.scratch_pad;
         (pad0, pad1, pad2, pad3, pad4)
     }
 }
 impl Bitboard {
+    #[inline]
     #[must_use]
     pub fn new(board_size: usize) -> Self {
         let total_bits = board_size * board_size;
@@ -41,6 +44,7 @@ impl Bitboard {
             num_words,
         }
     }
+    #[inline]
     #[must_use]
     pub const fn num_words(&self) -> usize {
         self.num_words
@@ -115,10 +119,12 @@ impl Bitboard {
         }
         self.apply_mask(target);
     }
+    #[inline]
     #[must_use]
     pub fn is_all_zeros(bits: &[u64]) -> bool {
         bits.iter().all(|&w| w == 0)
     }
+    #[inline]
     #[must_use]
     pub const fn iter_bits<'a>(&self, bb: &'a [u64]) -> BitIterator<'a> {
         BitIterator {
@@ -129,6 +135,7 @@ impl Bitboard {
             current_word: 0,
         }
     }
+    #[inline]
     #[must_use]
     pub fn from_board(board: &[u8], board_size: usize) -> Self {
         let mut bb = Self::new(board_size);

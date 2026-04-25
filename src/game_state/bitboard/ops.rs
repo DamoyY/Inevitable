@@ -69,6 +69,7 @@ impl Bitboard {
             *last &= self.last_word_mask();
         }
     }
+    #[inline]
     pub fn dilate_into(
         &self,
         bb: &[u64],
@@ -84,14 +85,14 @@ impl Bitboard {
         target.copy_from_slice(bb);
         let sources: [&[u64]; 3] = [bb, masked_not_left, masked_not_right];
         let ops = [
-            (1usize, false, 1usize),
-            (2usize, true, 1usize),
-            (0usize, false, size),
-            (0usize, true, size),
-            (1usize, false, size + 1),
-            (2usize, false, size - 1),
-            (1usize, true, size - 1),
-            (2usize, true, size + 1),
+            (1_usize, false, 1_usize),
+            (2_usize, true, 1_usize),
+            (0_usize, false, size),
+            (0_usize, true, size),
+            (1_usize, false, size + 1),
+            (2_usize, false, size - 1),
+            (1_usize, true, size - 1),
+            (2_usize, true, size + 1),
         ];
         for (src_idx, shift_left, n) in ops {
             if shift_left {
@@ -103,6 +104,7 @@ impl Bitboard {
         }
         self.apply_mask(target);
     }
+    #[inline]
     pub fn neighbors_into(
         &self,
         bb: &[u64],

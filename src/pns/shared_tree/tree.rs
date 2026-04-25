@@ -39,6 +39,7 @@ impl SharedTree {
             }
         }
     }
+    #[inline]
     #[must_use]
     pub fn new(
         root_player: u8,
@@ -55,6 +56,7 @@ impl SharedTree {
             None,
         )
     }
+    #[inline]
     #[must_use]
     pub fn with_tt(
         root_player: u8,
@@ -74,6 +76,7 @@ impl SharedTree {
             existing_node_table,
         )
     }
+    #[inline]
     #[must_use]
     pub fn with_tt_and_stop(
         root_player: u8,
@@ -100,6 +103,7 @@ impl SharedTree {
             stats,
         }
     }
+    #[inline]
     pub fn increase_depth_limit(&mut self, new_depth_limit: usize) {
         if let Some(current_limit) = self.depth_limit
             && new_depth_limit <= current_limit
@@ -143,18 +147,23 @@ impl SharedTree {
             self.update_node_pdn(&node);
         }
     }
+    #[inline]
     pub fn is_solved(&self) -> bool {
         self.solved.load(Ordering::Acquire)
     }
+    #[inline]
     pub fn stop_requested(&self) -> bool {
         self.stop_flag.load(Ordering::Acquire)
     }
+    #[inline]
     pub fn should_stop(&self) -> bool {
         self.is_solved() || self.stop_requested()
     }
+    #[inline]
     pub fn mark_solved(&self) {
         self.solved.store(true, Ordering::Release);
     }
+    #[inline]
     pub fn select_best_child(&self, node: &NodeRef) -> Option<ChildRef> {
         let children = node.children.get()?;
         let is_or_node = node.is_or_node();
@@ -169,6 +178,7 @@ impl SharedTree {
             })
             .cloned()
     }
+    #[inline]
     pub fn update_node_pdn(&self, node: &NodeRef) {
         let prev_proof = node.get_pn();
         let prev_disproof = node.get_dn();

@@ -23,6 +23,7 @@ pub struct ParallelNode {
     pub depth_cutoff: AtomicBool,
 }
 impl ParallelNode {
+    #[inline]
     #[must_use]
     pub const fn new(player: u8, depth: usize, hash: u64, is_depth_limited: bool) -> Self {
         Self {
@@ -125,10 +126,12 @@ impl ParallelNode {
         self.virtual_pn.fetch_sub(vpn, Ordering::AcqRel);
         self.virtual_dn.fetch_sub(vdn, Ordering::AcqRel);
     }
+    #[inline]
     pub fn set_proven(&self) {
         self.set_pn(0);
         self.set_dn(u64::MAX);
     }
+    #[inline]
     pub fn set_disproven(&self) {
         self.set_pn(u64::MAX);
         self.set_dn(0);
@@ -140,9 +143,11 @@ pub struct Worker {
     pub ctx: ThreadLocalContext,
 }
 impl Worker {
+    #[inline]
     pub const fn new(tree: Arc<SharedTree>, ctx: ThreadLocalContext) -> Self {
         Self { tree, ctx }
     }
+    #[inline]
     pub fn run(&mut self) {
         while !self.tree.should_stop() {
             if self.tree.root.get_pn() == u64::MAX {

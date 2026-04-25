@@ -1,6 +1,7 @@
 use super::{Coord, GomokuEvaluator, GomokuPosition};
 use crate::config::EvaluationConfig;
 impl GomokuEvaluator {
+    #[inline]
     #[must_use]
     pub fn new(board_size: usize, config: EvaluationConfig) -> Self {
         let proximity_kernel = Self::init_proximity_kernel(config);

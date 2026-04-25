@@ -92,7 +92,7 @@ impl ThreadLocalContext {
             current_proximity_scores,
             legal_moves: Vec::with_capacity(256),
             scored_moves: Vec::with_capacity(256),
-            forcing_bits: vec![0u64; num_words],
+            forcing_bits: vec![0_u64; num_words],
             node_cache: LocalNodeCache::new(NODE_CACHE_CAPACITY),
         }
     }
