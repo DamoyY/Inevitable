@@ -3,17 +3,6 @@ name = "inevitable"
 version = "0.0.0"
 edition = "2024"
 
-[dependencies]
-ahash = "*"
-ctrlc = "*"
-hashbrown = "*"
-mimalloc = { version = "*", features = ["v3"] }
-parking_lot = "*"
-rand = "*"
-serde = { version = "*", features = ["derive"] }
-serde_yaml = { package = "serde_yaml_ng", version = "*" }
-smallvec = "*"
-
 [profile.release]
 opt-level = 3
 lto = "fat"
@@ -65,3 +54,18 @@ too-many-arguments = "allow"
 too_many_lines = "allow"
 undocumented_unsafe_blocks = "allow"
 wildcard_dependencies = "allow"
+
+# 以上所有内容（包括 lints）任何人禁止修改
+# ---
+# 以下内容（`[dependencies]`）可自由修改
+
+[dependencies]
+ahash = "*"
+ctrlc = "*"
+hashbrown = "*"
+mimalloc = { version = "*", features = ["v3"] }
+parking_lot = "*"
+rand = "*"
+serde = { version = "*", features = ["derive"] }
+serde_yaml = { package = "serde_yaml_ng", version = "*" }
+smallvec = "*"

@@ -1,17 +1,24 @@
-import os
-import pathlib
+from collections.abc import Sequence
 from colorsys import hls_to_rgb
-from datetime import datetime
+from datetime import UTC, datetime
 from math import atan2, pi
+from os import environ, pathsep
+from pathlib import Path
+from typing import TypeAlias
 
 import numpy as np
+from matplotlib.axes import Axes
+from matplotlib.figure import Figure
 from matplotlib.font_manager import FontProperties, fontManager
 from matplotlib.pyplot import close, rcParams, subplots, tight_layout
-from pandas import read_csv, to_numeric
+from numpy.typing import NDArray
+from pandas import DataFrame, Series, read_csv, to_numeric
 
-CSV_PATH = "log.csv"
-OUTPUT_DIR = "tool/visualization"
-CJK_FONT_CANDIDATES = [
+Color: TypeAlias = tuple[float, float, float]
+FloatArray: TypeAlias = NDArray[np.float64]
+CSV_PATH = Path("log.csv")
+OUTPUT_DIR = Path("tool/visualization")
+CJK_FONT_CANDIDATES: list[str] = [
     "Microsoft YaHei",
     "SimHei",
     "PingFang SC",
@@ -23,24 +30,27 @@ CJK_FONT_CANDIDATES = [
     "Source Han Sans SC",
     "Arial Unicode MS",
 ]
-FALLBACK_FONTS = ["DejaVu Sans"]
+FALLBACK_FONTS: list[str] = ["DejaVu Sans"]
 FIG_SIZE = 16, 16
 BAR_WIDTH = 0.95
 TIME_UNIT_SCALE = 1e-06
-Y_ABS_LIMIT = -15000000.0 * TIME_UNIT_SCALE, 15000000.0 * TIME_UNIT_SCALE
+Y_ABS_LIMIT: tuple[float, float] = (
+    -15000000.0 * TIME_UNIT_SCALE,
+    15000000.0 * TIME_UNIT_SCALE,
+)
 
 
-def _srgb_to_linear(c):
-    if c <= 0.04045:
-        return c / 12.92
-    return ((c + 0.055) / 1.055) ** 2.4
+def _srgb_to_linear(color_channel: float) -> float:
+    if color_channel <= 0.04045:
+        return color_channel / 12.92
+    return ((color_channel + 0.055) / 1.055) ** 2.4
 
 
-def _rgb_to_oklab(rgb):
+def _rgb_to_oklab(rgb: Color) -> Color:
     r, g, b = rgb
-    r_lin = _srgb_to_linear(r)
-    g_lin = _srgb_to_linear(g)
-    b_lin = _srgb_to_linear(b)
+    r_lin = _srgb_to_linear(color_channel=r)
+    g_lin = _srgb_to_linear(color_channel=g)
+    b_lin = _srgb_to_linear(color_channel=b)
     l_val = 0.4122214708 * r_lin + 0.5363325363 * g_lin + 0.0514459929 * b_lin
     m = 0.2119034982 * r_lin + 0.6806995451 * g_lin + 0.1073969566 * b_lin
     s = 0.0883024619 * r_lin + 0.2817188376 * g_lin + 0.6299787005 * b_lin
@@ -53,51 +63,61 @@ def _rgb_to_oklab(rgb):
     return l_val, a, b
 
 
-def _oklab_to_oklch(lab):
+def _oklab_to_oklch(lab: Color) -> Color:
     l_val, a, b = lab
     c = (a * a + b * b) ** 0.5
-    h = atan2(b, a)
+    h: float = atan2(b, a)
     if h < 0:
         h += 2 * pi
     return l_val, c, h
 
 
-def _oklch_distance(c1, c2):
-    hue_diff = abs(c1[2] - c2[2])
+def _oklch_distance(first: Color, second: Color) -> float:
+    hue_diff = abs(first[2] - second[2])
     hue_wrap = min(hue_diff, 2 * pi - hue_diff)
-    hue_term = hue_wrap * ((c1[1] + c2[1]) / 2)
-    return ((c1[0] - c2[0]) ** 2 + (c1[1] - c2[1]) ** 2 + hue_term**2) ** 0.5
+    hue_term = hue_wrap * ((first[1] + second[1]) / 2)
+    return (
+        (first[0] - second[0]) ** 2 + (first[1] - second[1]) ** 2 + hue_term**2
+    ) ** 0.5
 
 
-def generate_distinct_colors(count):
+def generate_distinct_colors(count: int) -> list[Color]:
     if count <= 0:
         return []
-    hue_count = max(60, count * 3)
-    hues = np.linspace(0, 1, hue_count, endpoint=False)
-    lightness = [0.38, 0.5, 0.62]
-    saturation = [0.6, 0.78, 0.92]
-    candidates = []
-    for h in hues:
-        for lightness_value in lightness:
-            for saturation_value in saturation:
-                candidates.append(
-                    hls_to_rgb(float(h), lightness_value, saturation_value),
-                )
-    oklch_values = [_oklab_to_oklch(_rgb_to_oklab(c)) for c in candidates]
-    gray_oklch = _oklab_to_oklch(_rgb_to_oklab((0.5, 0.5, 0.5)))
-    first_idx = max(
+    hue_count: int = max(60, count * 3)
+    hues = np.linspace(start=0, stop=1, num=hue_count, endpoint=False)
+    lightness: list[float] = [0.38, 0.5, 0.62]
+    saturation: list[float] = [0.6, 0.78, 0.92]
+    candidates: list[Color] = [
+        hls_to_rgb(h=float(hue), l=lightness_value, s=saturation_value)
+        for hue in hues
+        for lightness_value in lightness
+        for saturation_value in saturation
+    ]
+    oklch_values = [
+        _oklab_to_oklch(lab=_rgb_to_oklab(rgb=c)) for c in candidates
+    ]
+    gray_oklch = _oklab_to_oklch(lab=_rgb_to_oklab(rgb=(0.5, 0.5, 0.5)))
+    first_idx: int = max(
         range(len(candidates)),
-        key=lambda i: _oklch_distance(oklch_values[i], gray_oklch),
+        key=lambda i: _oklch_distance(
+            first=oklch_values[i],
+            second=gray_oklch,
+        ),
     )
     selected = [candidates[first_idx]]
     selected_oklch = [oklch_values[first_idx]]
-    remaining = [i for i in range(len(candidates)) if i != first_idx]
+    remaining: list[int] = [
+        i for i in range(len(candidates)) if i != first_idx
+    ]
     while len(selected) < count:
-        best_idx = remaining[0]
-        best_score = -1.0
+        best_idx: int = remaining[0]
+        best_score: float = -1.0
         for i in remaining:
             oklch = oklch_values[i]
-            min_dist = min(_oklch_distance(oklch, s) for s in selected_oklch)
+            min_dist = min(
+                _oklch_distance(first=oklch, second=s) for s in selected_oklch
+            )
             if min_dist > best_score:
                 best_score = min_dist
                 best_idx = i
@@ -107,25 +127,28 @@ def generate_distinct_colors(count):
     return selected
 
 
-def _load_log(csv_path):
-    head = read_csv(csv_path, nrows=0)
-    all_cols = list(head.columns)
-    time_cols = [c for c in all_cols if "耗时" in str(c)]
-    extra_cols = []
+def _load_log(csv_path: Path) -> tuple[DataFrame, list[str]]:
+    head: DataFrame = read_csv(filepath_or_buffer=csv_path, nrows=0)
+    all_cols: list[str] = list(head.columns)
+    time_cols: list[str] = [c for c in all_cols if "耗时" in str(c)]
+    extra_cols: list[str] = []
     if "回合" in all_cols:
         extra_cols.append("回合")
     if "深度" in all_cols:
         extra_cols.append("深度")
-    usecols = time_cols + extra_cols
-    df = read_csv(csv_path, usecols=usecols)
+    usecols: list[str] = time_cols + extra_cols
+    df: DataFrame = read_csv(filepath_or_buffer=csv_path, usecols=usecols)
     time_cols = [c for c in df.columns if "耗时" in str(c)]
     return df, time_cols
 
 
-def _build_x_axis(df, plot_df):
-    use_round_depth = "回合" in df.columns and "深度" in df.columns
+def _build_x_axis(
+    df: DataFrame,
+    plot_df: DataFrame,
+) -> tuple[FloatArray, Series | None, bool]:
+    use_round_depth: bool = "回合" in df.columns and "深度" in df.columns
     if use_round_depth:
-        x = np.arange(1, len(plot_df) + 1)
+        x = np.arange(1, stop=len(plot_df) + 1, dtype=np.float64)
         x_labels = (
             df["回合"].astype(str).str.strip()
             + "."
@@ -133,53 +156,55 @@ def _build_x_axis(df, plot_df):
         )
         return x, x_labels, use_round_depth
     if "深度" in df.columns:
-        x = to_numeric(df["深度"], errors="coerce")
+        x = np.asarray(
+            to_numeric(df["深度"], errors="coerce"),
+            dtype=np.float64,
+        )
         return x, None, use_round_depth
-    x = np.arange(1, len(plot_df) + 1)
+    x = np.arange(1, stop=len(plot_df) + 1, dtype=np.float64)
     return x, None, use_round_depth
 
 
-def _load_custom_fonts():
-    font_paths = []
+def _load_custom_fonts() -> list[str]:
+    font_paths: list[Path] = []
     for env_name in ("CJK_FONT_PATH", "CJK_FONT_PATHS", "FONT_PATH"):
-        value = os.environ.get(env_name)
+        value: str | None = environ.get(env_name)
         if not value:
             continue
-        for raw_path in value.split(os.pathsep):
-            path = raw_path.strip()
-            if path:
-                font_paths.append(path)
-    loaded_names = []
-    for path in font_paths:
-        if not pathlib.Path(path).is_file():
+        for raw_path in value.split(sep=pathsep):
+            path_value: str = raw_path.strip()
+            if path_value:
+                font_paths.append(Path(path_value))
+    loaded_names: list[str] = []
+    for font_path in font_paths:
+        if not font_path.is_file():
+            print(f"字体文件不存在，已跳过: {font_path}")
             continue
         try:
-            fontManager.addfont(path)
-            name = FontProperties(fname=path).get_name()
-        except Exception:
-            continue
-        loaded_names.append(name)
+            fontManager.addfont(path=str(font_path))
+            name = FontProperties(fname=str(font_path)).get_name()
+        except (OSError, RuntimeError, ValueError) as error:
+            print(f"加载字体失败，已跳过 {font_path}: {error}")
+        else:
+            loaded_names.append(name)
     return loaded_names
 
 
-def _resolve_font_families():
+def _resolve_font_families() -> list[str]:
     custom_fonts = _load_custom_fonts()
-    available = {f.name for f in fontManager.ttflist}
-    selected = []
+    available: set[str] = {f.name for f in fontManager.ttflist}
+    selected: list[str] = []
     for name in custom_fonts + CJK_FONT_CANDIDATES + FALLBACK_FONTS:
         if name in available and name not in selected:
             selected.append(name)
     if not selected:
         selected = FALLBACK_FONTS[:]
-    has_cjk = any(name in CJK_FONT_CANDIDATES for name in selected) or bool(
-        custom_fonts,
-    )
-    return selected, has_cjk
+    return selected
 
 
-def _set_plot_style():
+def _set_plot_style() -> None:
     rcParams["axes.unicode_minus"] = False
-    font_families, has_cjk = _resolve_font_families()
+    font_families = _resolve_font_families()
     rcParams["font.sans-serif"] = font_families
     rcParams["font.size"] = 20
     rcParams["figure.facecolor"] = "black"
@@ -195,12 +220,18 @@ def _set_plot_style():
     rcParams["grid.color"] = "gray"
 
 
-def _plot_absolute(ax, x, series_values, time_cols, colors):
+def _plot_absolute(
+    ax: Axes,
+    x: FloatArray,
+    series_values: FloatArray,
+    time_cols: Sequence[str],
+    colors: Sequence[Color],
+) -> FloatArray:
     total = series_values.sum(axis=1)
     valid_rows = total != 0
     if np.any(valid_rows):
-        avg_time = np.mean(series_values[valid_rows], axis=0)
-        order = _centered_order_by_average(avg_time)
+        avg_time = np.mean(a=series_values[valid_rows], axis=0)
+        order = _centered_order_by_average(avg_values=avg_time)
     else:
         order = np.arange(series_values.shape[1])
     bottom = -total / 2
@@ -215,15 +246,21 @@ def _plot_absolute(ax, x, series_values, time_cols, colors):
             alpha=1.0,
             width=BAR_WIDTH,
         )
-        bottom = bottom + values
+        bottom += values
     ax.axhline(0, color="white", linewidth=1.5)
     ax.set_ylabel("耗时（秒）", fontsize=26)
     ax.set_ylim(*Y_ABS_LIMIT)
-    ax.grid(True, alpha=1, color="gray")
+    ax.grid(visible=True, alpha=1, color="gray")
     return total
 
 
-def _plot_percent(ax, x, series_values, total, colors):
+def _plot_percent(
+    ax: Axes,
+    x: FloatArray,
+    series_values: FloatArray,
+    total: FloatArray,
+    colors: Sequence[Color],
+) -> None:
     total_safe = total.copy()
     total_safe[total_safe == 0] = np.nan
     percent_values = (
@@ -236,9 +273,9 @@ def _plot_percent(ax, x, series_values, total, colors):
         * 100
     )
     valid_rows = ~np.isnan(total_safe)
-    if np.any(valid_rows):
-        avg_percent = np.mean(percent_values[valid_rows], axis=0)
-        order = np.argsort(-avg_percent)
+    if np.any(a=valid_rows):
+        avg_percent = np.mean(a=percent_values[valid_rows], axis=0)
+        order = np.argsort(a=-avg_percent)
     else:
         order = np.arange(percent_values.shape[1])
     bottom = np.zeros(len(series_values))
@@ -252,32 +289,47 @@ def _plot_percent(ax, x, series_values, total, colors):
             alpha=1.0,
             width=BAR_WIDTH,
         )
-        bottom = bottom + values
+        bottom += values
     ax.set_ylabel("占比（%）", fontsize=26)
     ax.set_xlabel("回合-深度", fontsize=26)
     ax.set_ylim(0, 100)
-    ax.grid(True, alpha=1, color="gray")
+    ax.grid(visible=True, alpha=1, color="gray")
 
 
-def _centered_order_by_average(avg_values):
-    count = len(avg_values)
+def _centered_order_by_average(avg_values: FloatArray) -> NDArray[np.int64]:
+    count: int = len(avg_values)
     if count == 0:
-        return np.array([], dtype=int)
-    sorted_idx = np.argsort(-avg_values)
-    center = (count - 1) / 2
+        return np.array(object=[], dtype=int)
+    sorted_idx = np.argsort(a=-avg_values)
+    center: float = (count - 1) / 2
     positions = list(range(count))
     positions.sort(key=lambda i: abs(i - center))
     order = np.empty(count, dtype=int)
-    for rank, pos in enumerate(positions):
+    for rank, pos in enumerate(iterable=positions):
         order[pos] = sorted_idx[rank]
     return order
 
 
-def _apply_xticks(ax, x, x_labels, use_round_depth):
+def _apply_xticks(
+    ax: Axes,
+    x: FloatArray,
+    x_labels: Series | None,
+    *,
+    use_round_depth: bool,
+) -> None:
     if use_round_depth:
-        ax.set_xticks(x, labels=x_labels, fontsize=20, rotation=45, ha="right")
+        if x_labels is None:
+            message = "启用回合-深度坐标时缺少坐标标签。"
+            raise ValueError(message)
+        ax.set_xticks(
+            ticks=x,
+            labels=x_labels,
+            fontsize=20,
+            rotation=45,
+            ha="right",
+        )
     else:
-        ax.set_xticks(x)
+        ax.set_xticks(ticks=x)
         ax.set_xticklabels(
             ax.get_xticks(),
             fontsize=20,
@@ -286,55 +338,76 @@ def _apply_xticks(ax, x, x_labels, use_round_depth):
         )
 
 
-def _save_figure(fig):
-    timestamp = datetime.now().strftime("%m-%d_%H-%M")
-    pathlib.Path(OUTPUT_DIR).mkdir(exist_ok=True, parents=True)
-    svg_path = os.path.join(OUTPUT_DIR, f"{timestamp}.svg")
+def _save_figure(fig: Figure) -> Path:
+    timestamp: str = datetime.now(tz=UTC).astimezone().strftime("%m-%d_%H-%M")
+    OUTPUT_DIR.mkdir(exist_ok=True, parents=True)
+    svg_path = OUTPUT_DIR / f"{timestamp}.svg"
     fig.savefig(
         svg_path,
         bbox_inches="tight",
         facecolor="black",
         edgecolor="none",
     )
-    close(fig)
+    close(fig=fig)
     return svg_path
 
 
-def main():
-    df, time_cols = _load_log(CSV_PATH)
-    plot_df = (
-        df[time_cols]
-        .apply(to_numeric, errors="coerce", downcast="float")
-        .mul(TIME_UNIT_SCALE)
+def main() -> None:
+    df, time_cols = _load_log(csv_path=CSV_PATH)
+    numeric_plot: DataFrame | Series = df[time_cols].apply(
+        func=to_numeric,
+        errors="coerce",
+        downcast="float",
     )
+    if not isinstance(numeric_plot, DataFrame):
+        message = "耗时列转换结果不是 DataFrame。"
+        raise TypeError(message)
+    plot_df: DataFrame = numeric_plot.mul(other=TIME_UNIT_SCALE)
     x, x_labels, use_round_depth = _build_x_axis(df, plot_df)
     _set_plot_style()
     fig, axes = subplots(
-        2,
-        1,
+        nrows=2,
+        ncols=1,
         figsize=FIG_SIZE,
         sharex=True,
         gridspec_kw={"height_ratios": [1, 1]},
     )
-    colors = generate_distinct_colors(len(time_cols))
-    plot_filled = plot_df.fillna(0)
-    series_values = plot_filled[time_cols].to_numpy()
-    total = _plot_absolute(axes[0], x, series_values, time_cols, colors)
+    colors = generate_distinct_colors(count=len(time_cols))
+    plot_filled: DataFrame = plot_df.fillna(value=0)
+    series_values = plot_filled[time_cols].to_numpy(dtype=np.float64)
+    total = _plot_absolute(
+        ax=axes[0],
+        x=x,
+        series_values=series_values,
+        time_cols=time_cols,
+        colors=colors,
+    )
     handles, labels = axes[0].get_legend_handles_labels()
     fig.legend(
-        handles,
-        labels,
+        handles=handles,
+        labels=labels,
         loc="center left",
         bbox_to_anchor=(1.02, 0.5),
         frameon=False,
         fontsize=18,
     )
-    _plot_percent(axes[1], x, series_values, total, colors)
-    _apply_xticks(axes[1], x, x_labels, use_round_depth)
+    _plot_percent(
+        ax=axes[1],
+        x=x,
+        series_values=series_values,
+        total=total,
+        colors=colors,
+    )
+    _apply_xticks(
+        ax=axes[1],
+        x=x,
+        x_labels=x_labels,
+        use_round_depth=use_round_depth,
+    )
     for ax in axes:
         ax.tick_params(axis="y", labelsize=20)
     tight_layout(rect=(0, 0, 1, 1))
-    _save_figure(fig)
+    _save_figure(fig=fig)
 
 
 if __name__ == "__main__":

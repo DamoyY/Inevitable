@@ -1,0 +1,35 @@
+[tool.pyright]
+typeCheckingMode = "basic"
+ignore = ["research/benchmark/MILO"]
+
+[tool.ruff]
+line-length = 79
+lint.select = ["ALL"]
+lint.ignore = [
+    "CPY001",
+    "C901",
+    "D100",
+    "D101",
+    "D102",
+    "D103",
+    "D104",
+    "D105",
+    "D107",
+    "D203",
+    "D212",
+    "E501",
+    "ERA001",
+    "INP001",
+    "RUF001",
+    "PLR0912",
+    "PLR0913",
+    "PLR0914",
+    "PLR0915",
+    "PLR0917",
+    "PLR2004",
+    "S404",
+    "T201",
+]
+lint.preview = true
+format.preview = true
+extend-exclude = ["research/benchmark/MILO"]
